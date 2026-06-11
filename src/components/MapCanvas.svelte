@@ -4,6 +4,7 @@
   import type { MapFragment, Annotation, AssemblyScheme, ToolType, Point } from '@/types';
   import { SYSTEM_CONFIG } from '@/types';
   import { appStore } from '@/lib/store';
+  import { getFragmentCenter, getSpliceRelations } from '@/lib/utils';
 
   export let scheme: AssemblyScheme | null = null;
   export let selectedFragmentId: string | null = null;
@@ -28,14 +29,17 @@
   let stage: Konva.Stage | null = null;
   let layer: Konva.Layer | null = null;
   let annotationLayer: Konva.Layer | null = null;
+  let spliceRelationLayer: Konva.Layer | null = null;
   let transformer: Konva.Transformer | null = null;
   let images: Map<string, HTMLImageElement> = new Map();
   let nodes: Map<string, Konva.Node> = new Map();
   let annotationNodes: Map<string, Konva.Node> = new Map();
+  let spliceRelationNodes: Map<string, Konva.Node> = new Map();
   let drawingPoints: Point[] = [];
   let tempLine: Konva.Line | null = null;
   let isPanning = false;
   let panStart = { x: 0, y: 0 };
+  let showSpliceRelations = true;
 
   const getFragmentLayer = () => layer;
   const getAnnotationLayer = () => annotationLayer;
@@ -331,6 +335,135 @@
     annotationLayer.batchDraw();
   }
 
+  function renderSpliceRelations() {
+    if (!spliceRelationLayer || !scheme || !showSpliceRelations) {
+      spliceRelationLayer?.destroyChildren();
+      spliceRelationNodes.clear();
+      spliceRelationLayer?.batchDraw();
+      return;
+    }
+
+    spliceRelationLayer.destroyChildren();
+    spliceRelationNodes.clear();
+
+    const relations = getSpliceRelations(scheme);
+
+    for (const rel of relations) {
+      const fromCenter = getFragmentCenter(rel.fromFragment);
+      const toCenter = getFragmentCenter(rel.toFragment);
+
+      const isHighlighted = selectedFragmentId === rel.fromFragmentId || selectedFragmentId === rel.toFragmentId;
+
+      const midX = (fromCenter.x + toCenter.x) / 2;
+      const midY = (fromCenter.y + toCenter.y) / 2;
+
+      const lineGroup = new Konva.Group({ id: `splice-${rel.id}` });
+
+      const line = new Konva.Line({
+        points: [fromCenter.x, fromCenter.y, toCenter.x, toCenter.y],
+        stroke: isHighlighted ? '#16a34a' : '#22c55e',
+        strokeWidth: isHighlighted ? 3 : 2,
+        lineCap: 'round',
+        lineJoin: 'round',
+        dash: isHighlighted ? [] : [8, 4],
+        opacity: isHighlighted ? 0.9 : 0.6,
+      });
+
+      const circle1 = new Konva.Circle({
+        x: fromCenter.x,
+        y: fromCenter.y,
+        radius: isHighlighted ? 6 : 4,
+        fill: isHighlighted ? '#16a34a' : '#22c55e',
+        stroke: '#fff',
+        strokeWidth: 2,
+        opacity: isHighlighted ? 0.9 : 0.6,
+      });
+
+      const circle2 = new Konva.Circle({
+        x: toCenter.x,
+        y: toCenter.y,
+        radius: isHighlighted ? 6 : 4,
+        fill: isHighlighted ? '#16a34a' : '#22c55e',
+        stroke: '#fff',
+        strokeWidth: 2,
+        opacity: isHighlighted ? 0.9 : 0.6,
+      });
+
+      const labelBg = new Konva.Rect({
+        x: midX - 30,
+        y: midY - 10,
+        width: 60,
+        height: 20,
+        fill: isHighlighted ? 'rgba(22, 163, 74, 0.95)' : 'rgba(34, 197, 94, 0.8)',
+        cornerRadius: 4,
+        opacity: isHighlighted ? 1 : 0,
+      });
+
+      const label = new Konva.Text({
+        x: midX - 30,
+        y: midY - 6,
+        width: 60,
+        text: '已拼接',
+        fontSize: 11,
+        fontFamily: 'Noto Serif SC, serif',
+        fill: '#fff',
+        align: 'center',
+        opacity: isHighlighted ? 1 : 0,
+      });
+
+      lineGroup.add(line);
+      lineGroup.add(circle1);
+      lineGroup.add(circle2);
+      lineGroup.add(labelBg);
+      lineGroup.add(label);
+
+      lineGroup.on('mouseenter', () => {
+        line.stroke('#16a34a');
+        line.strokeWidth(3);
+        line.dash([]);
+        line.opacity(0.9);
+        circle1.radius(6);
+        circle1.fill('#16a34a');
+        circle1.opacity(0.9);
+        circle2.radius(6);
+        circle2.fill('#16a34a');
+        circle2.opacity(0.9);
+        labelBg.opacity(1);
+        label.opacity(1);
+        if (stage) stage.container().style.cursor = 'pointer';
+        if (spliceRelationLayer) spliceRelationLayer.batchDraw();
+      });
+
+      lineGroup.on('mouseleave', () => {
+        const shouldHighlight = selectedFragmentId === rel.fromFragmentId || selectedFragmentId === rel.toFragmentId;
+        line.stroke(shouldHighlight ? '#16a34a' : '#22c55e');
+        line.strokeWidth(shouldHighlight ? 3 : 2);
+        line.dash(shouldHighlight ? [] : [8, 4]);
+        line.opacity(shouldHighlight ? 0.9 : 0.6);
+        circle1.radius(shouldHighlight ? 6 : 4);
+        circle1.fill(shouldHighlight ? '#16a34a' : '#22c55e');
+        circle1.opacity(shouldHighlight ? 0.9 : 0.6);
+        circle2.radius(shouldHighlight ? 6 : 4);
+        circle2.fill(shouldHighlight ? '#16a34a' : '#22c55e');
+        circle2.opacity(shouldHighlight ? 0.9 : 0.6);
+        labelBg.opacity(0);
+        label.opacity(0);
+        if (stage) stage.container().style.cursor = 'default';
+        if (spliceRelationLayer) spliceRelationLayer.batchDraw();
+      });
+
+      lineGroup.on('click tap', (e) => {
+        e.cancelBubble = true;
+        dispatch('fragmentSelect', rel.fromFragmentId);
+      });
+
+      spliceRelationLayer.add(lineGroup);
+      spliceRelationNodes.set(rel.id, lineGroup);
+    }
+
+    spliceRelationLayer.batchDraw();
+  }
+
   function updateTransformerSelection() {
     if (!transformer || !layer || !scheme) return;
 
@@ -447,6 +580,11 @@
   $: scheme, scheme && renderAnnotations();
   $: scheme && scheme.annotations.length && renderAnnotations();
 
+  $: scheme, scheme && renderSpliceRelations();
+  $: scheme && scheme.fragments.length && renderSpliceRelations();
+  $: selectedFragmentId, renderSpliceRelations();
+  $: showSpliceRelations, renderSpliceRelations();
+
   $: selectedFragmentId, scheme, updateTransformerSelection();
 
   $: selectedAnnotationId, scheme, (highlightSelectedAnnotation(), renderAnnotations());
@@ -480,8 +618,10 @@
 
     layer = new Konva.Layer();
     annotationLayer = new Konva.Layer();
+    spliceRelationLayer = new Konva.Layer();
     stage.add(layer);
     stage.add(annotationLayer);
+    stage.add(spliceRelationLayer);
 
     transformer = new Konva.Transformer({
       rotateAnchorOffset: 30,
@@ -506,6 +646,7 @@
     resize();
     renderFragments();
     renderAnnotations();
+    renderSpliceRelations();
   });
 
   onDestroy(() => {
@@ -522,4 +663,19 @@
     linear-gradient(90deg, rgba(193, 154, 107, 0.08) 1px, transparent 1px);
     background-size: 20px 20px;"
 >
+  {#if !readOnly && scheme && scheme.fragments.some(f => f.isMatched)}
+    <button
+      class="absolute top-3 right-3 z-10 px-3 py-1.5 text-xs rounded-md shadow-md transition-all"
+      class:bg-parchment-600={showSpliceRelations}
+      class:text-white={showSpliceRelations}
+      class:bg-white={!showSpliceRelations}
+      class:text-ink-600={!showSpliceRelations}
+      class:border={!showSpliceRelations}
+      class:border-parchment-300={!showSpliceRelations}
+      on:click={() => (showSpliceRelations = !showSpliceRelations)}
+      title={showSpliceRelations ? '隐藏拼接关系' : '显示拼接关系'}
+    >
+      🔗 {showSpliceRelations ? '隐藏' : '显示'}拼接关系
+    </button>
+  {/if}
 </div>

@@ -16,6 +16,7 @@
   import AnnotationPanel from '@/components/AnnotationPanel.svelte';
   import SchemePanel from '@/components/SchemePanel.svelte';
   import StatisticsPanel from '@/components/StatisticsPanel.svelte';
+  import SpliceRelationPanel from '@/components/SpliceRelationPanel.svelte';
   import FragmentProperties from '@/components/FragmentProperties.svelte';
   import CompareView from '@/components/CompareView.svelte';
   import ImportFragmentDialog from '@/components/ImportFragmentDialog.svelte';
@@ -61,7 +62,7 @@
   let toastMessage = '';
   let toastType: 'info' | 'success' | 'warning' | 'error' = 'info';
   let leftPanelTab: 'fragments' | 'schemes' = 'fragments';
-  let rightPanelTab: 'annotations' | 'properties' | 'statistics' = 'properties';
+  let rightPanelTab: 'annotations' | 'properties' | 'statistics' | 'relations' = 'properties';
 
   function showToast(msg: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') {
     toastMessage = msg;
@@ -141,7 +142,11 @@
     const result = appStore.importScheme(json);
     importSchemeOpen = false;
     if (result.success) {
-      showToast('方案导入成功', 'success');
+      if (result.warnings && result.warnings.length > 0) {
+        showToast(`方案导入成功，但有 ${result.warnings.length} 条警告`, 'warning');
+      } else {
+        showToast('方案导入成功', 'success');
+      }
     } else {
       showToast(`导入失败：${result.error || '未知错误'}`, 'error');
     }
@@ -326,6 +331,16 @@
         >
           📊 统计
         </button>
+        <button
+          class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+          class:bg-parchment-600={rightPanelTab === 'relations'}
+          class:text-white={rightPanelTab === 'relations'}
+          class:text-ink-600={rightPanelTab !== 'relations'}
+          class:hover:bg-parchment-200={rightPanelTab !== 'relations'}
+          on:click={() => (rightPanelTab = 'relations')}
+        >
+          🔗 拼接
+        </button>
       </div>
       <div class="flex-1 overflow-hidden p-3">
         {#if rightPanelTab === 'annotations'}
@@ -339,6 +354,12 @@
           <FragmentProperties
             fragment={selFragment}
             scheme={curScheme}
+          />
+        {:else if rightPanelTab === 'relations'}
+          <SpliceRelationPanel
+            scheme={curScheme}
+            selectedFragmentId={selectedFragmentId}
+            on:selectFragment={(ev) => appStore.setSelectedFragment(ev.detail)}
           />
         {:else}
           {#if stats}

@@ -8,6 +8,8 @@ import type {
   ToolType,
   Point,
   AnnotationType,
+  SpliceRelation,
+  SpliceRelationGroup,
 } from '@/types';
 import { SYSTEM_CONFIG, ANNOTATION_TYPE_LABELS } from '@/types';
 import {
@@ -19,6 +21,10 @@ import {
   countAnnotationsByType,
   hasAnnotations,
   validateSchemeData,
+  validateSchemeImport,
+  cleanupInvalidMatchedIds,
+  getSpliceRelations,
+  getSpliceRelationGroups,
   cloneScheme,
   getMaxZIndex,
   isNameUniqueInScheme,
@@ -66,12 +72,26 @@ function createAppStore() {
     },
 
     setViewport(scale: number, x: number, y: number) {
-      update((state) => ({
-        ...state,
-        viewportScale: clamp(scale, 0.1, 10),
-        viewportX: x,
-        viewportY: y,
-      }));
+      update((state) => {
+        const newScale = clamp(scale, 0.1, 10);
+        const newSchemes = state.schemes.map((s) => {
+          if (s.id === state.currentSchemeId) {
+            return {
+              ...s,
+              viewport: { scale: newScale, x, y },
+              updatedAt: now(),
+            };
+          }
+          return s;
+        });
+        return {
+          ...state,
+          schemes: newSchemes,
+          viewportScale: newScale,
+          viewportX: x,
+          viewportY: y,
+        };
+      });
     },
 
     addFragment(data: {
@@ -298,6 +318,49 @@ function createAppStore() {
       });
     },
 
+    removeSpliceRelation(fragmentId1: string, fragmentId2: string): { success: boolean; error?: string } {
+      const state = get({ subscribe });
+      const scheme = getCurrentScheme(state);
+      if (!scheme) return { success: false, error: '当前没有激活的方案' };
+
+      const frag1 = scheme.fragments.find((f) => f.id === fragmentId1);
+      const frag2 = scheme.fragments.find((f) => f.id === fragmentId2);
+      if (!frag1 || !frag2) return { success: false, error: '未找到指定的碎片' };
+
+      update((st) => {
+        const s = getCurrentScheme(st);
+        if (!s) return st;
+        const newSchemes = st.schemes.map((sc) => {
+          if (sc.id !== s.id) return sc;
+          const newFragments = sc.fragments.map((f) => {
+            if (f.id === fragmentId1) {
+              const newMatched = f.matchedWithIds.filter((id) => id !== fragmentId2);
+              return {
+                ...f,
+                matchedWithIds: newMatched,
+                isMatched: newMatched.length > 0,
+                updatedAt: now(),
+              };
+            }
+            if (f.id === fragmentId2) {
+              const newMatched = f.matchedWithIds.filter((id) => id !== fragmentId1);
+              return {
+                ...f,
+                matchedWithIds: newMatched,
+                isMatched: newMatched.length > 0,
+                updatedAt: now(),
+              };
+            }
+            return f;
+          });
+          return { ...sc, fragments: newFragments, updatedAt: now() };
+        });
+        return { ...st, schemes: newSchemes };
+      });
+
+      return { success: true };
+    },
+
     addAnnotation(type: AnnotationType, data: Partial<Annotation>): Annotation | null {
       let created: Annotation | null = null;
 
@@ -497,24 +560,37 @@ function createAppStore() {
       return newId;
     },
 
-    importScheme(json: string): { success: boolean; error?: string } {
+    importScheme(json: string): { success: boolean; error?: string; warnings?: string[] } {
       try {
         const parsed = JSON.parse(json);
-        if (!validateSchemeData(parsed)) {
-          return { success: false, error: '无效的方案格式，数据不完整或类型错误' };
+
+        const validationResult = validateSchemeImport(parsed);
+        if (!validationResult.success) {
+          return {
+            success: false,
+            error: validationResult.errors.join('；'),
+            warnings: validationResult.warnings,
+          };
         }
+
+        const cleanedScheme = cleanupInvalidMatchedIds(parsed);
+
         update((state) => {
           const scheme: AssemblyScheme = {
-            ...parsed,
+            ...cleanedScheme,
             id: generateId(),
             name: `${parsed.name} (导入)`,
-            viewport: parsed.viewport || { scale: 1, x: 0, y: 0 },
+            viewport: cleanedScheme.viewport || { scale: 1, x: 0, y: 0 },
             createdAt: now(),
             updatedAt: now(),
           };
           return { ...state, schemes: [...state.schemes, scheme] };
         });
-        return { success: true };
+
+        return {
+          success: true,
+          warnings: validationResult.warnings.length > 0 ? validationResult.warnings : undefined,
+        };
       } catch (e) {
         return { success: false, error: `解析失败：${(e as Error).message}` };
       }
@@ -548,7 +624,21 @@ function createAppStore() {
     saveToLocalStorage() {
       const state = get({ subscribe });
       try {
-        localStorage.setItem(SYSTEM_CONFIG.STORAGE_KEY, JSON.stringify(state.schemes));
+        const schemesWithViewport = state.schemes.map((s) => {
+          if (s.id === state.currentSchemeId) {
+            return {
+              ...s,
+              viewport: {
+                scale: state.viewportScale,
+                x: state.viewportX,
+                y: state.viewportY,
+              },
+              updatedAt: now(),
+            };
+          }
+          return s;
+        });
+        localStorage.setItem(SYSTEM_CONFIG.STORAGE_KEY, JSON.stringify(schemesWithViewport));
       } catch (e) {
         console.error('保存失败', e);
       }
@@ -560,10 +650,15 @@ function createAppStore() {
         if (data) {
           const parsed = JSON.parse(data);
           if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(validateSchemeData)) {
+            const firstScheme = parsed[0];
+            const viewport = firstScheme.viewport || { scale: 1, x: 0, y: 0 };
             update((state) => ({
               ...state,
               schemes: parsed,
-              currentSchemeId: parsed[0].id,
+              currentSchemeId: firstScheme.id,
+              viewportScale: viewport.scale,
+              viewportX: viewport.x,
+              viewportY: viewport.y,
             }));
           }
         }
@@ -642,6 +737,16 @@ export const statistics = derived(currentScheme, ($scheme): Statistics => {
     annotationByType: countAnnotationsByType($scheme.annotations),
     visibleFragments: visibleFragments.length,
   };
+});
+
+export const spliceRelations = derived(currentScheme, ($scheme): SpliceRelation[] => {
+  if (!$scheme) return [];
+  return getSpliceRelations($scheme);
+});
+
+export const spliceRelationGroups = derived(currentScheme, ($scheme): SpliceRelationGroup[] => {
+  if (!$scheme) return [];
+  return getSpliceRelationGroups($scheme);
 });
 
 export const leftCompareScheme = derived(appStore, ($app) =>

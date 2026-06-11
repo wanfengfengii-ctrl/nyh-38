@@ -132,3 +132,17 @@ export const ANNOTATION_TYPE_LABELS: Record<AnnotationType, string> = {
   boundary: '边界',
   note: '注释',
 };
+
+export interface SpliceRelation {
+  id: string;
+  fromFragmentId: string;
+  toFragmentId: string;
+  fromFragment: MapFragment;
+  toFragment: MapFragment;
+}
+
+export interface SpliceRelationGroup {
+  groupId: string;
+  fragments: MapFragment[];
+  relations: SpliceRelation[];
+}

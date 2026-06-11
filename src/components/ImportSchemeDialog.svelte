@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
-  import { validateSchemeData, cloneScheme } from '@/lib/utils';
+  import { validateSchemeImport } from '@/lib/utils';
+  import type { ValidationResult } from '@/lib/utils';
 
   export let open: boolean = false;
   const dispatch = createEventDispatcher<{
@@ -11,10 +12,12 @@
 
   let fileName = '';
   let fileContent = '';
-  let validationMsg = '';
-  let isValid = false;
+  let validationResult: ValidationResult | null = null;
+  let schemeInfo: { name: string; fragmentCount: number; annotationCount: number } | null = null;
   let loading = false;
   let fileInput: HTMLInputElement | null = null;
+
+  $: isValid = validationResult?.success ?? false;
 
   function triggerFileSelect() {
     fileInput?.click();
@@ -25,23 +28,34 @@
     const file = input.files?.[0];
     if (!file) return;
     loading = true;
-    validationMsg = '';
-    isValid = false;
+    validationResult = null;
+    schemeInfo = null;
     fileContent = '';
 
     try {
       fileName = file.name;
       const text = await file.text();
       const parsed = JSON.parse(text);
-      if (!validateSchemeData(parsed)) {
-        validationMsg = '❌ 方案格式无效：缺少必要字段或数据类型错误';
-      } else {
-        validationMsg = `✅ 方案有效：${parsed.name}（${parsed.fragments.length} 个碎片，${parsed.annotations.length} 条批注）`;
-        isValid = true;
+      const result = validateSchemeImport(parsed);
+      validationResult = result;
+
+      if (parsed.name !== undefined && parsed.fragments !== undefined && parsed.annotations !== undefined) {
+        schemeInfo = {
+          name: parsed.name,
+          fragmentCount: parsed.fragments.length,
+          annotationCount: parsed.annotations.length,
+        };
+      }
+
+      if (result.success) {
         fileContent = text;
       }
     } catch (err) {
-      validationMsg = `❌ 文件解析失败：${(err as Error).message}`;
+      validationResult = {
+        success: false,
+        errors: [`文件解析失败：${(err as Error).message}`],
+        warnings: [],
+      };
     } finally {
       loading = false;
       if (fileInput) fileInput.value = '';
@@ -75,8 +89,8 @@
   function resetState() {
     fileName = '';
     fileContent = '';
-    validationMsg = '';
-    isValid = false;
+    validationResult = null;
+    schemeInfo = null;
   }
 </script>
 
@@ -113,15 +127,31 @@
       </div>
     {/if}
 
-    {#if validationMsg}
-      <div
-        class="rounded-md px-3 py-2 text-sm"
-        class:bg-green-50={isValid}
-        class:text-green-700={isValid}
-        class:bg-red-50={!isValid}
-        class:text-red-700={!isValid}
-      >
-        {validationMsg}
+    {#if schemeInfo && isValid}
+      <div class="bg-green-50 border border-green-200 rounded-md px-3 py-2 text-sm text-green-700">
+        ✅ 方案有效：<strong>{schemeInfo.name}</strong>（{schemeInfo.fragmentCount} 个碎片，{schemeInfo.annotationCount} 条批注）
+      </div>
+    {/if}
+
+    {#if validationResult && validationResult.warnings.length > 0}
+      <div class="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+        <div class="text-sm font-medium text-yellow-800 mb-2">⚠️ 警告信息（{validationResult.warnings.length} 条）：</div>
+        <ul class="text-xs text-yellow-700 space-y-1 max-h-32 overflow-y-auto">
+          {#each validationResult.warnings as warning}
+            <li>• {warning}</li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+
+    {#if validationResult && validationResult.errors.length > 0}
+      <div class="bg-red-50 border border-red-200 rounded-md p-3">
+        <div class="text-sm font-medium text-red-800 mb-2">❌ 校验错误（{validationResult.errors.length} 条）：</div>
+        <ul class="text-xs text-red-700 space-y-1 max-h-40 overflow-y-auto">
+          {#each validationResult.errors as error}
+            <li>• {error}</li>
+          {/each}
+        </ul>
       </div>
     {/if}
 
@@ -129,9 +159,9 @@
       <div class="text-center text-sm text-ink-600">正在验证文件...</div>
     {/if}
 
-    {#if !isValid && validationMsg}
+    {#if !isValid && validationResult && validationResult.errors.length > 0}
       <div class="bg-yellow-50 border border-yellow-200 rounded-md p-3 text-xs text-yellow-800">
-        ⚠️ <strong>提示：</strong>由于方案文件无效，系统将保留当前工作区内容不变。请检查文件格式后重试。
+        ⚠️ <strong>提示：</strong>由于方案文件无效，系统将保留当前工作区内容不变。请修正上述问题后重试。
       </div>
     {/if}
   </div>
