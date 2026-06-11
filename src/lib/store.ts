@@ -401,6 +401,7 @@ function createAppStore() {
           description: description || '',
           fragments: [],
           annotations: [],
+          viewport: { scale: 1, x: 0, y: 0 },
           createdAt: now(),
           updatedAt: now(),
         };
@@ -413,12 +414,28 @@ function createAppStore() {
     switchScheme(id: string) {
       update((state) => {
         if (!state.schemes.find((s) => s.id === id)) return state;
+        const updatedSchemes = state.schemes.map((s) => {
+          if (s.id === state.currentSchemeId) {
+            return {
+              ...s,
+              viewport: { scale: state.viewportScale, x: state.viewportX, y: state.viewportY },
+              updatedAt: now(),
+            };
+          }
+          return s;
+        });
+        const targetScheme = updatedSchemes.find((s) => s.id === id)!;
+        const targetViewport = targetScheme.viewport || { scale: 1, x: 0, y: 0 };
         return {
           ...state,
+          schemes: updatedSchemes,
           currentSchemeId: id,
           selectedFragmentId: null,
           selectedAnnotationId: null,
           isCompareMode: false,
+          viewportScale: targetViewport.scale,
+          viewportX: targetViewport.x,
+          viewportY: targetViewport.y,
         };
       });
     },
@@ -491,6 +508,7 @@ function createAppStore() {
             ...parsed,
             id: generateId(),
             name: `${parsed.name} (导入)`,
+            viewport: parsed.viewport || { scale: 1, x: 0, y: 0 },
             createdAt: now(),
             updatedAt: now(),
           };
@@ -605,8 +623,8 @@ export const statistics = derived(currentScheme, ($scheme): Statistics => {
   }
 
   const visibleFragments = $scheme.fragments.filter((f) => f.visible);
-  const matchedFragments = $scheme.fragments.filter((f) => f.isMatched);
-  const unmatchedFragments = $scheme.fragments.filter((f) => !f.isMatched);
+  const matchedFragments = visibleFragments.filter((f) => f.isMatched);
+  const unmatchedFragments = visibleFragments.filter((f) => !f.isMatched);
 
   const totalArea = visibleFragments.reduce((sum, f) => sum + calculateFragmentArea(f), 0);
   const assembledArea = visibleFragments

@@ -28,6 +28,9 @@
   let selectedAnnotationId = $appStore.selectedAnnotationId;
   let activeTool: ToolType = $appStore.activeTool;
   let isCompareMode = $appStore.isCompareMode;
+  let viewportScale = $appStore.viewportScale;
+  let viewportX = $appStore.viewportX;
+  let viewportY = $appStore.viewportY;
   let stats = $statistics;
   let selFragment = $selectedFragment;
   let curScheme = $currentScheme;
@@ -41,6 +44,9 @@
     selectedAnnotationId = $s.selectedAnnotationId;
     activeTool = $s.activeTool;
     isCompareMode = $s.isCompareMode;
+    viewportScale = $s.viewportScale;
+    viewportX = $s.viewportX;
+    viewportY = $s.viewportY;
   });
 
   const unsubStats = statistics.subscribe((v) => (stats = v));
@@ -98,6 +104,12 @@
   function handleFragmentDblClick(e: { detail: string }) {
     appStore.bringFragmentToFront(e.detail);
     appStore.setSelectedFragment(e.detail);
+  }
+
+  function handleViewportChange(e: {
+    detail: { scale: number; x: number; y: number };
+  }) {
+    appStore.setViewport(e.detail.scale, e.detail.x, e.detail.y);
   }
 
   function handleImportFragments(e: {
@@ -266,11 +278,15 @@
                 selectedFragmentId={selectedFragmentId}
                 selectedAnnotationId={selectedAnnotationId}
                 activeTool={activeTool}
+                viewportScale={viewportScale}
+                viewportX={viewportX}
+                viewportY={viewportY}
                 on:fragmentSelect={handleFragmentSelect}
                 on:fragmentTransform={handleFragmentTransform}
                 on:fragmentDblClick={handleFragmentDblClick}
                 on:annotationSelect={handleAnnotationSelect}
                 on:annotationCreate={handleAnnotationCreate}
+                on:viewportChange={handleViewportChange}
               />
             </div>
           </div>

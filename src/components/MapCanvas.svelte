@@ -10,6 +10,9 @@
   export let selectedAnnotationId: string | null = null;
   export let activeTool: ToolType = 'select';
   export let readOnly: boolean = false;
+  export let viewportScale: number = 1;
+  export let viewportX: number = 0;
+  export let viewportY: number = 0;
 
   const dispatch = createEventDispatcher<{
     fragmentSelect: string | null;
@@ -18,6 +21,7 @@
     annotationSelect: string | null;
     annotationCreate: { type: string; fragmentId: string; data: Record<string, unknown> };
     canvasClick: { x: number; y: number };
+    viewportChange: { scale: number; x: number; y: number };
   }>();
 
   let container: HTMLDivElement | null = null;
@@ -373,7 +377,7 @@
   }
 
   function handleWheel(e: WheelEvent) {
-    if (!stage) return;
+    if (!stage || readOnly) return;
     e.preventDefault();
     const oldScale = stage.scaleX();
     const ptr = stage.getPointerPosition();
@@ -385,12 +389,12 @@
     const direction = e.deltaY > 0 ? -1 : 1;
     const scaleBy = 1.05;
     const newScale = Math.max(0.1, Math.min(10, oldScale * (direction > 0 ? scaleBy : 1 / scaleBy)));
+    const newX = ptr.x - mousePointTo.x * newScale;
+    const newY = ptr.y - mousePointTo.y * newScale;
     stage.scale({ x: newScale, y: newScale });
-    stage.position({
-      x: ptr.x - mousePointTo.x * newScale,
-      y: ptr.y - mousePointTo.y * newScale,
-    });
+    stage.position({ x: newX, y: newY });
     stage.batchDraw();
+    dispatch('viewportChange', { scale: newScale, x: newX, y: newY });
   }
 
   function handleStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>) {
@@ -421,6 +425,9 @@
   }
 
   function handleStageMouseUp() {
+    if (isPanning && stage && !readOnly) {
+      dispatch('viewportChange', { scale: stage.scaleX(), x: stage.x(), y: stage.y() });
+    }
     isPanning = false;
     if (stage) {
       stage.container().style.cursor = activeTool === 'pan' ? 'grab' : 'default';
@@ -455,6 +462,13 @@
 
   $: if (activeTool !== 'annotate-river' && activeTool !== 'annotate-boundary') clearDrawing();
 
+  $: viewportScale, viewportX, viewportY, stage && (() => {
+    if (readOnly) return;
+    stage.scale({ x: viewportScale, y: viewportScale });
+    stage.position({ x: viewportX, y: viewportY });
+    stage.batchDraw();
+  })();
+
   onMount(() => {
     if (!container) return;
 
@@ -479,6 +493,9 @@
       anchorStrokeWidth: 1.5,
     });
     layer.add(transformer);
+
+    stage.scale({ x: viewportScale, y: viewportScale });
+    stage.position({ x: viewportX, y: viewportY });
 
     stage.on('wheel', handleWheel);
     stage.on('mousedown touchstart', handleStageMouseDown);

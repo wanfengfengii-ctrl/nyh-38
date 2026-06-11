@@ -71,6 +71,11 @@ export interface AssemblyScheme {
   description?: string;
   fragments: MapFragment[];
   annotations: Annotation[];
+  viewport: {
+    scale: number;
+    x: number;
+    y: number;
+  };
   createdAt: number;
   updatedAt: number;
 }
