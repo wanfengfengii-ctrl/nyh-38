@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #app {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Noto Serif SC', Georgia, serif;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-150
+           border border-transparent disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply bg-parchment-600 text-white hover:bg-parchment-700 border-parchment-700;
+  }
+  .btn-secondary {
+    @apply bg-parchment-100 text-ink-700 hover:bg-parchment-200 border-parchment-300;
+  }
+  .btn-danger {
+    @apply bg-red-500 text-white hover:bg-red-600 border-red-600;
+  }
+  .panel {
+    @apply bg-parchment-50 border border-parchment-200 rounded-lg shadow-sm;
+  }
+  .panel-header {
+    @apply px-4 py-2.5 border-b border-parchment-200 font-semibold text-ink-800 flex items-center gap-2;
+  }
+  .panel-body {
+    @apply p-4;
+  }
+  .input {
+    @apply w-full px-3 py-1.5 rounded-md border border-parchment-300 bg-white
+           text-sm text-ink-800 focus:outline-none focus:ring-2 focus:ring-parchment-500
+           focus:border-transparent;
+  }
+  .label {
+    @apply block text-sm font-medium text-ink-700 mb-1;
+  }
+  .tag {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #d4b87a #f1e7d0;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: #f1e7d0;
+    border-radius: 3px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #d4b87a;
+    border-radius: 3px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #c4a052;
+  }
+}
+
+.konvajs-content {
+  border-radius: 0.5rem;
+}
