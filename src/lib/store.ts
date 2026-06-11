@@ -638,6 +638,186 @@ function createAppStore() {
       update((state) => ({ ...state, leftCompareSchemeId: leftId, rightCompareSchemeId: rightId }));
     },
 
+    createTimeline(name: string, region: string, description?: string): string {
+      let newId = '';
+      update((state) => {
+        const timeline: Timeline = {
+          id: generateId(),
+          name,
+          region,
+          description: description || '',
+          versionIds: [],
+          createdAt: now(),
+          updatedAt: now(),
+        };
+        newId = timeline.id;
+        return {
+          ...state,
+          timelines: [...state.timelines, timeline],
+          currentTimelineId: timeline.id,
+        };
+      });
+      return newId;
+    },
+
+    updateTimeline(id: string, updates: Partial<Timeline>) {
+      update((state) => ({
+        ...state,
+        timelines: state.timelines.map((t) =>
+          t.id === id ? { ...t, ...updates, updatedAt: now() } : t
+        ),
+      }));
+    },
+
+    deleteTimeline(id: string) {
+      update((state) => {
+        const versionIdsToRemove = new Set(
+          state.mapVersions.filter((v) => v.timelineId === id).map((v) => v.id)
+        );
+        return {
+          ...state,
+          timelines: state.timelines.filter((t) => t.id !== id),
+          mapVersions: state.mapVersions.filter((v) => v.timelineId !== id),
+          currentTimelineId: state.currentTimelineId === id ? null : state.currentTimelineId,
+          timelineSelectedVersionId: versionIdsToRemove.has(state.timelineSelectedVersionId || '') ? null : state.timelineSelectedVersionId,
+          timelineCompareFromId: versionIdsToRemove.has(state.timelineCompareFromId || '') ? null : state.timelineCompareFromId,
+          timelineCompareToId: versionIdsToRemove.has(state.timelineCompareToId || '') ? null : state.timelineCompareToId,
+        };
+      });
+    },
+
+    switchTimeline(id: string | null) {
+      update((state) => {
+        if (id === null) {
+          return { ...state, currentTimelineId: null, timelineSelectedVersionId: null };
+        }
+        const timeline = state.timelines.find((t) => t.id === id);
+        if (!timeline) return state;
+        const versions = state.mapVersions.filter((v) => timeline.versionIds.includes(v.id));
+        const firstVersion = versions.length > 0 ? versions[0].id : null;
+        return {
+          ...state,
+          currentTimelineId: id,
+          timelineSelectedVersionId: firstVersion,
+        };
+      });
+    },
+
+    setTimelineMode(enabled: boolean) {
+      update((state) => ({
+        ...state,
+        isTimelineMode: enabled,
+        isCompareMode: enabled ? false : state.isCompareMode,
+      }));
+    },
+
+    selectTimelineVersion(versionId: string | null) {
+      update((state) => ({ ...state, timelineSelectedVersionId: versionId }));
+    },
+
+    setTimelineCompare(fromId: string | null, toId: string | null) {
+      update((state) => ({
+        ...state,
+        timelineCompareFromId: fromId,
+        timelineCompareToId: toId,
+      }));
+    },
+
+    addMapVersion(timelineId: string, data: {
+      schemeId: string;
+      dynasty: string;
+      year: string;
+      yearNumeric: number;
+      source: string;
+      mapType: string;
+      scribe?: string;
+      provenance?: string;
+      notes?: string;
+    }): string | null {
+      let newId: string | null = null;
+      update((state) => {
+        const timeline = state.timelines.find((t) => t.id === timelineId);
+        if (!timeline) return state;
+
+        const version: MapVersion = {
+          id: generateId(),
+          timelineId,
+          schemeId: data.schemeId,
+          dynasty: data.dynasty,
+          year: data.year,
+          yearNumeric: data.yearNumeric,
+          source: data.source,
+          mapType: data.mapType,
+          scribe: data.scribe,
+          provenance: data.provenance,
+          notes: data.notes,
+          createdAt: now(),
+          updatedAt: now(),
+        };
+        newId = version.id;
+
+        const newVersionIds = [...timeline.versionIds, version.id];
+        const allVersions = [...state.mapVersions, version];
+        const sortedVersions = allVersions
+          .filter((v) => newVersionIds.includes(v.id))
+          .sort((a, b) => a.yearNumeric - b.yearNumeric)
+          .map((v) => v.id);
+
+        return {
+          ...state,
+          mapVersions: allVersions,
+          timelines: state.timelines.map((t) =>
+            t.id === timelineId
+              ? { ...t, versionIds: sortedVersions, updatedAt: now() }
+              : t
+          ),
+        };
+      });
+      return newId;
+    },
+
+    updateMapVersion(id: string, updates: Partial<MapVersion>) {
+      update((state) => {
+        const newVersions = state.mapVersions.map((v) =>
+          v.id === id ? { ...v, ...updates, updatedAt: now() } : v
+        );
+
+        let newTimelines = state.timelines;
+        if (updates.yearNumeric !== undefined) {
+          const version = state.mapVersions.find((v) => v.id === id);
+          if (version) {
+            newTimelines = state.timelines.map((t) => {
+              if (t.id !== version.timelineId) return t;
+              const versions = newVersions.filter((v) => t.versionIds.includes(v.id));
+              versions.sort((a, b) => a.yearNumeric - b.yearNumeric);
+              return { ...t, versionIds: versions.map((v) => v.id), updatedAt: now() };
+            });
+          }
+        }
+
+        return { ...state, mapVersions: newVersions, timelines: newTimelines };
+      });
+    },
+
+    removeMapVersion(id: string) {
+      update((state) => {
+        const version = state.mapVersions.find((v) => v.id === id);
+        if (!version) return state;
+        return {
+          ...state,
+          mapVersions: state.mapVersions.filter((v) => v.id !== id),
+          timelines: state.timelines.map((t) =>
+            t.id === version.timelineId
+              ? { ...t, versionIds: t.versionIds.filter((vid) => vid !== id), updatedAt: now() }
+              : t
+          ),
+          timelineSelectedVersionId: state.timelineSelectedVersionId === id ? null : state.timelineSelectedVersionId,
+          timelineCompareFromId: state.timelineCompareFromId === id ? null : state.timelineCompareFromId,
+          timelineCompareToId: state.timelineCompareToId === id ? null : state.timelineCompareToId,
+        };
+      });
+    },
+
     saveToLocalStorage() {
       const state = get({ subscribe });
       try {
@@ -655,7 +835,12 @@ function createAppStore() {
           }
           return s;
         });
-        localStorage.setItem(SYSTEM_CONFIG.STORAGE_KEY, JSON.stringify(schemesWithViewport));
+        const payload = {
+          schemes: schemesWithViewport,
+          timelines: state.timelines,
+          mapVersions: state.mapVersions,
+        };
+        localStorage.setItem(SYSTEM_CONFIG.STORAGE_KEY, JSON.stringify(payload));
       } catch (e) {
         console.error('保存失败', e);
       }
@@ -666,18 +851,42 @@ function createAppStore() {
         const data = localStorage.getItem(SYSTEM_CONFIG.STORAGE_KEY);
         if (data) {
           const parsed = JSON.parse(data);
-          if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(validateSchemeData)) {
-            const firstScheme = parsed[0];
-            const viewport = firstScheme.viewport || { scale: 1, x: 0, y: 0 };
-            update((state) => ({
-              ...state,
-              schemes: parsed,
-              currentSchemeId: firstScheme.id,
-              viewportScale: viewport.scale,
-              viewportX: viewport.x,
-              viewportY: viewport.y,
-            }));
+          let schemes: AssemblyScheme[] = [];
+          let timelines: Timeline[] = [];
+          let mapVersions: MapVersion[] = [];
+
+          if (Array.isArray(parsed)) {
+            schemes = parsed.filter(validateSchemeData);
+          } else if (typeof parsed === 'object' && parsed !== null) {
+            const obj = parsed as { schemes?: unknown; timelines?: unknown; mapVersions?: unknown };
+            if (Array.isArray(obj.schemes)) {
+              schemes = obj.schemes.filter(validateSchemeData);
+            }
+            if (Array.isArray(obj.timelines)) {
+              timelines = obj.timelines as Timeline[];
+            }
+            if (Array.isArray(obj.mapVersions)) {
+              mapVersions = obj.mapVersions as MapVersion[];
+            }
           }
+
+          if (schemes.length === 0) {
+            schemes = [createDefaultScheme()];
+          }
+
+          const firstScheme = schemes[0];
+          const viewport = firstScheme.viewport || { scale: 1, x: 0, y: 0 };
+          update((state) => ({
+            ...state,
+            schemes,
+            timelines,
+            mapVersions,
+            currentSchemeId: firstScheme.id,
+            currentTimelineId: timelines.length > 0 ? timelines[0].id : null,
+            viewportScale: viewport.scale,
+            viewportX: viewport.x,
+            viewportY: viewport.y,
+          }));
         }
       } catch (e) {
         console.error('加载失败', e);
@@ -772,4 +981,302 @@ export const leftCompareScheme = derived(appStore, ($app) =>
 
 export const rightCompareScheme = derived(appStore, ($app) =>
   $app.rightCompareSchemeId ? $app.schemes.find((s) => s.id === $app.rightCompareSchemeId) || null : null
+);
+
+export const currentTimeline = derived(appStore, ($app) => {
+  if (!$app.currentTimelineId) return null;
+  return $app.timelines.find((t) => t.id === $app.currentTimelineId) || null;
+});
+
+export const currentTimelineVersions = derived(
+  [appStore, currentTimeline],
+  ([$app, $timeline]): MapVersion[] => {
+    if (!$timeline) return [];
+    return $app.mapVersions
+      .filter((v) => $timeline.versionIds.includes(v.id))
+      .sort((a, b) => a.yearNumeric - b.yearNumeric);
+  }
+);
+
+export const selectedTimelineVersion = derived(
+  [appStore, currentTimelineVersions],
+  ([$app, $versions]) => {
+    if (!$app.timelineSelectedVersionId) return null;
+    return $versions.find((v) => v.id === $app.timelineSelectedVersionId) || null;
+  }
+);
+
+export const selectedTimelineScheme = derived(
+  [appStore, selectedTimelineVersion],
+  ([$app, $version]) => {
+    if (!$version) return null;
+    return $app.schemes.find((s) => s.id === $version.schemeId) || null;
+  }
+);
+
+export const timelineCompareFromVersion = derived(appStore, ($app) => {
+  if (!$app.timelineCompareFromId) return null;
+  return $app.mapVersions.find((v) => v.id === $app.timelineCompareFromId) || null;
+});
+
+export const timelineCompareToVersion = derived(appStore, ($app) => {
+  if (!$app.timelineCompareToId) return null;
+  return $app.mapVersions.find((v) => v.id === $app.timelineCompareToId) || null;
+});
+
+export const timelineCompareFromScheme = derived(
+  [appStore, timelineCompareFromVersion],
+  ([$app, $version]) => {
+    if (!$version) return null;
+    return $app.schemes.find((s) => s.id === $version.schemeId) || null;
+  }
+);
+
+export const timelineCompareToScheme = derived(
+  [appStore, timelineCompareToVersion],
+  ([$app, $version]) => {
+    if (!$version) return null;
+    return $app.schemes.find((s) => s.id === $version.schemeId) || null;
+  }
+);
+
+function arePointsEqual(a: Point[], b: Point[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (Math.abs(a[i].x - b[i].x) > 0.001 || Math.abs(a[i].y - b[i].y) > 0.001) return false;
+  }
+  return true;
+}
+
+function computeAnnotationChanges(
+  fromScheme: AssemblyScheme | null,
+  toScheme: AssemblyScheme | null,
+  fromVersionId: string | undefined,
+  toVersionId: string
+): AnnotationChange[] {
+  const changes: AnnotationChange[] = [];
+  if (!fromScheme || !toScheme) return changes;
+
+  const fromAnns = new Map(fromScheme.annotations.map((a) => [a.id, a]));
+  const toAnns = new Map(toScheme.annotations.map((a) => [a.id, a]));
+
+  for (const ann of toScheme.annotations) {
+    const fromAnn = fromAnns.get(ann.id);
+    if (!fromAnn) {
+      changes.push({
+        type: 'added',
+        annotationId: ann.id,
+        annotationLabel: ann.label,
+        annotationType: ann.type,
+        toVersionId,
+        toLabel: ann.label,
+        toDescription: ann.description,
+        toColor: ann.color,
+      });
+      continue;
+    }
+
+    let modified = false;
+    let positionChanged = false;
+    let pointsChanged = false;
+
+    if (fromAnn.label !== ann.label) modified = true;
+    if (fromAnn.description !== ann.description) modified = true;
+    if (fromAnn.color !== ann.color) modified = true;
+
+    if (fromAnn.type === 'place' && ann.type === 'place') {
+      const f = fromAnn as PlaceAnnotation;
+      const t = ann as PlaceAnnotation;
+      if (Math.abs(f.position.x - t.position.x) > 0.001 || Math.abs(f.position.y - t.position.y) > 0.001) {
+        modified = true;
+        positionChanged = true;
+      }
+    }
+    if (fromAnn.type === 'river' && ann.type === 'river') {
+      const f = fromAnn as RiverAnnotation;
+      const t = ann as RiverAnnotation;
+      if (!arePointsEqual(f.points, t.points) || f.strokeWidth !== t.strokeWidth) {
+        modified = true;
+        pointsChanged = true;
+      }
+    }
+    if (fromAnn.type === 'boundary' && ann.type === 'boundary') {
+      const f = fromAnn as BoundaryAnnotation;
+      const t = ann as BoundaryAnnotation;
+      if (!arePointsEqual(f.points, t.points) || f.strokeWidth !== t.strokeWidth || f.closed !== t.closed) {
+        modified = true;
+        pointsChanged = true;
+      }
+    }
+    if (fromAnn.type === 'note' && ann.type === 'note') {
+      const f = fromAnn as { fontSize: number; position: Point };
+      const t = ann as { fontSize: number; position: Point };
+      if (f.fontSize !== t.fontSize) modified = true;
+      if (Math.abs(f.position.x - t.position.x) > 0.001 || Math.abs(f.position.y - t.position.y) > 0.001) {
+        modified = true;
+        positionChanged = true;
+      }
+    }
+
+    if (modified) {
+      changes.push({
+        type: 'modified',
+        annotationId: ann.id,
+        annotationLabel: ann.label,
+        annotationType: ann.type,
+        fromVersionId,
+        toVersionId,
+        fromLabel: fromAnn.label,
+        toLabel: ann.label,
+        fromDescription: fromAnn.description,
+        toDescription: ann.description,
+        fromColor: fromAnn.color,
+        toColor: ann.color,
+        positionChanged,
+        pointsChanged,
+      });
+    } else {
+      changes.push({
+        type: 'unchanged',
+        annotationId: ann.id,
+        annotationLabel: ann.label,
+        annotationType: ann.type,
+        toVersionId,
+      });
+    }
+  }
+
+  for (const ann of fromScheme.annotations) {
+    if (!toAnns.has(ann.id)) {
+      changes.push({
+        type: 'removed',
+        annotationId: ann.id,
+        annotationLabel: ann.label,
+        annotationType: ann.type,
+        fromVersionId,
+        toVersionId,
+        fromLabel: ann.label,
+        fromDescription: ann.description,
+        fromColor: ann.color,
+      });
+    }
+  }
+
+  return changes;
+}
+
+export const evolutionStatistics = derived(
+  [currentTimelineVersions, appStore],
+  ([$versions, $app]): EvolutionStatistics | null => {
+    if ($versions.length < 1) return null;
+
+    const sorted = [...$versions].sort((a, b) => a.yearNumeric - b.yearNumeric);
+    const start = sorted[0].yearNumeric;
+    const end = sorted[sorted.length - 1].yearNumeric;
+
+    if (sorted.length < 2) {
+      return {
+        versionsCount: sorted.length,
+        dateRange: { start, end },
+        totalAnnotationChanges: 0,
+        addedCount: 0,
+        removedCount: 0,
+        modifiedCount: 0,
+        unchangedCount: 0,
+        byType: {
+          place: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+          river: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+          boundary: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+          note: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+        },
+        annotationChanges: [],
+      };
+    }
+
+    const allChanges: AnnotationChange[] = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const from = sorted[i - 1];
+      const to = sorted[i];
+      const fromScheme = $app.schemes.find((s) => s.id === from.schemeId) || null;
+      const toScheme = $app.schemes.find((s) => s.id === to.schemeId) || null;
+      const pairChanges = computeAnnotationChanges(fromScheme, toScheme, from.id, to.id);
+      allChanges.push(...pairChanges);
+    }
+
+    let addedCount = 0, removedCount = 0, modifiedCount = 0, unchangedCount = 0;
+    const byType = {
+      place: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+      river: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+      boundary: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+      note: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+    };
+
+    for (const c of allChanges) {
+      switch (c.type) {
+        case 'added': addedCount++; break;
+        case 'removed': removedCount++; break;
+        case 'modified': modifiedCount++; break;
+        case 'unchanged': unchangedCount++; break;
+      }
+      if (byType[c.annotationType]) {
+        byType[c.annotationType][c.type]++;
+      }
+    }
+
+    return {
+      versionsCount: sorted.length,
+      dateRange: { start, end },
+      totalAnnotationChanges: allChanges.length,
+      addedCount,
+      removedCount,
+      modifiedCount,
+      unchangedCount,
+      byType,
+      annotationChanges: allChanges,
+    };
+  }
+);
+
+export const pairEvolutionStats = derived(
+  [timelineCompareFromVersion, timelineCompareToVersion, appStore],
+  ([$from, $to, $app]): EvolutionStatistics | null => {
+    if (!$from || !$to) return null;
+
+    const fromScheme = $app.schemes.find((s) => s.id === $from.schemeId) || null;
+    const toScheme = $app.schemes.find((s) => s.id === $to.schemeId) || null;
+
+    const changes = computeAnnotationChanges(fromScheme, toScheme, $from.id, $to.id);
+
+    let addedCount = 0, removedCount = 0, modifiedCount = 0, unchangedCount = 0;
+    const byType = {
+      place: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+      river: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+      boundary: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+      note: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+    };
+
+    for (const c of changes) {
+      switch (c.type) {
+        case 'added': addedCount++; break;
+        case 'removed': removedCount++; break;
+        case 'modified': modifiedCount++; break;
+        case 'unchanged': unchangedCount++; break;
+      }
+      if (byType[c.annotationType]) {
+        byType[c.annotationType][c.type]++;
+      }
+    }
+
+    return {
+      versionsCount: 2,
+      dateRange: { start: $from.yearNumeric, end: $to.yearNumeric },
+      totalAnnotationChanges: changes.length,
+      addedCount,
+      removedCount,
+      modifiedCount,
+      unchangedCount,
+      byType,
+      annotationChanges: changes,
+    };
+  }
 );

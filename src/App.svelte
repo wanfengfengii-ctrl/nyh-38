@@ -19,6 +19,9 @@
   import SpliceRelationPanel from '@/components/SpliceRelationPanel.svelte';
   import FragmentProperties from '@/components/FragmentProperties.svelte';
   import CompareView from '@/components/CompareView.svelte';
+  import TimelinePanel from '@/components/TimelinePanel.svelte';
+  import TimelineEvolutionView from '@/components/TimelineEvolutionView.svelte';
+  import EvolutionStatsPanel from '@/components/EvolutionStatsPanel.svelte';
   import ImportFragmentDialog from '@/components/ImportFragmentDialog.svelte';
   import ImportSchemeDialog from '@/components/ImportSchemeDialog.svelte';
   import Toast from '@/components/Toast.svelte';
@@ -29,6 +32,7 @@
   let selectedAnnotationId = $appStore.selectedAnnotationId;
   let activeTool: ToolType = $appStore.activeTool;
   let isCompareMode = $appStore.isCompareMode;
+  let isTimelineMode = $appStore.isTimelineMode;
   let viewportScale = $appStore.viewportScale;
   let viewportX = $appStore.viewportX;
   let viewportY = $appStore.viewportY;
@@ -45,6 +49,7 @@
     selectedAnnotationId = $s.selectedAnnotationId;
     activeTool = $s.activeTool;
     isCompareMode = $s.isCompareMode;
+    isTimelineMode = $s.isTimelineMode;
     viewportScale = $s.viewportScale;
     viewportX = $s.viewportX;
     viewportY = $s.viewportY;
@@ -61,8 +66,8 @@
   let toastVisible = false;
   let toastMessage = '';
   let toastType: 'info' | 'success' | 'warning' | 'error' = 'info';
-  let leftPanelTab: 'fragments' | 'schemes' = 'fragments';
-  let rightPanelTab: 'annotations' | 'properties' | 'statistics' | 'relations' = 'properties';
+  let leftPanelTab: 'fragments' | 'schemes' | 'timeline' = 'fragments';
+  let rightPanelTab: 'annotations' | 'properties' | 'statistics' | 'relations' | 'evolution' = 'properties';
 
   function showToast(msg: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') {
     toastMessage = msg;
@@ -204,9 +209,9 @@
 
   <main class="flex-1 flex overflow-hidden">
     <aside class="w-72 flex-shrink-0 border-r border-parchment-200 bg-parchment-50 flex flex-col">
-      <div class="flex-shrink-0 px-3 pt-3 pb-2 flex gap-1 border-b border-parchment-200">
+      <div class="flex-shrink-0 px-3 pt-3 pb-2 flex gap-1 border-b border-parchment-200 flex-wrap">
         <button
-          class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+          class="px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors"
           class:bg-parchment-600={leftPanelTab === 'fragments'}
           class:text-white={leftPanelTab === 'fragments'}
           class:text-ink-600={leftPanelTab !== 'fragments'}
@@ -216,7 +221,7 @@
           🖼️ 碎片
         </button>
         <button
-          class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+          class="px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors"
           class:bg-parchment-600={leftPanelTab === 'schemes'}
           class:text-white={leftPanelTab === 'schemes'}
           class:text-ink-600={leftPanelTab !== 'schemes'}
@@ -224,6 +229,16 @@
           on:click={() => (leftPanelTab = 'schemes')}
         >
           📁 方案
+        </button>
+        <button
+          class="px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors"
+          class:bg-parchment-600={leftPanelTab === 'timeline'}
+          class:text-white={leftPanelTab === 'timeline'}
+          class:text-ink-600={leftPanelTab !== 'timeline'}
+          class:hover:bg-parchment-200={leftPanelTab !== 'timeline'}
+          on:click={() => (leftPanelTab = 'timeline')}
+        >
+          🗓️ 时序
         </button>
       </div>
       <div class="flex-1 overflow-hidden p-3">
@@ -233,11 +248,18 @@
             selectedFragmentId={selectedFragmentId}
             on:import={() => (importFragmentOpen = true)}
           />
-        {:else}
+        {:else if leftPanelTab === 'schemes'}
           <SchemePanel
             schemes={schemes}
             currentSchemeId={currentSchemeId}
             on:import={() => (importSchemeOpen = true)}
+          />
+        {:else}
+          <TimelinePanel
+            schemes={schemes}
+            on:openTimeline={(e) => {
+              rightPanelTab = 'evolution';
+            }}
           />
         {/if}
       </div>
@@ -245,7 +267,9 @@
 
     <section class="flex-1 overflow-hidden p-3 flex flex-col min-w-0">
       <div class="flex-1 min-h-0">
-        {#if isCompareMode}
+        {#if isTimelineMode}
+          <TimelineEvolutionView />
+        {:else if isCompareMode}
           <CompareView
             schemes={schemes}
             leftScheme={leftCompare}
@@ -300,9 +324,9 @@
     </section>
 
     <aside class="w-80 flex-shrink-0 border-l border-parchment-200 bg-parchment-50 flex flex-col">
-      <div class="flex-shrink-0 px-3 pt-3 pb-2 flex gap-1 border-b border-parchment-200">
+      <div class="flex-shrink-0 px-3 pt-3 pb-2 flex gap-1 border-b border-parchment-200 flex-wrap">
         <button
-          class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+          class="px-2 py-1.5 text-xs font-medium rounded-md transition-colors"
           class:bg-parchment-600={rightPanelTab === 'annotations'}
           class:text-white={rightPanelTab === 'annotations'}
           class:text-ink-600={rightPanelTab !== 'annotations'}
@@ -312,7 +336,7 @@
           📝 批注
         </button>
         <button
-          class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+          class="px-2 py-1.5 text-xs font-medium rounded-md transition-colors"
           class:bg-parchment-600={rightPanelTab === 'properties'}
           class:text-white={rightPanelTab === 'properties'}
           class:text-ink-600={rightPanelTab !== 'properties'}
@@ -322,7 +346,7 @@
           ⚙️ 属性
         </button>
         <button
-          class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+          class="px-2 py-1.5 text-xs font-medium rounded-md transition-colors"
           class:bg-parchment-600={rightPanelTab === 'statistics'}
           class:text-white={rightPanelTab === 'statistics'}
           class:text-ink-600={rightPanelTab !== 'statistics'}
@@ -332,7 +356,7 @@
           📊 统计
         </button>
         <button
-          class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+          class="px-2 py-1.5 text-xs font-medium rounded-md transition-colors"
           class:bg-parchment-600={rightPanelTab === 'relations'}
           class:text-white={rightPanelTab === 'relations'}
           class:text-ink-600={rightPanelTab !== 'relations'}
@@ -340,6 +364,16 @@
           on:click={() => (rightPanelTab = 'relations')}
         >
           🔗 拼接
+        </button>
+        <button
+          class="px-2 py-1.5 text-xs font-medium rounded-md transition-colors"
+          class:bg-parchment-600={rightPanelTab === 'evolution'}
+          class:text-white={rightPanelTab === 'evolution'}
+          class:text-ink-600={rightPanelTab !== 'evolution'}
+          class:hover:bg-parchment-200={rightPanelTab !== 'evolution'}
+          on:click={() => (rightPanelTab = 'evolution')}
+        >
+          📈 演变
         </button>
       </div>
       <div class="flex-1 overflow-hidden p-3">
@@ -361,6 +395,8 @@
             selectedFragmentId={selectedFragmentId}
             on:selectFragment={(ev) => appStore.setSelectedFragment(ev.detail)}
           />
+        {:else if rightPanelTab === 'evolution'}
+          <EvolutionStatsPanel />
         {:else}
           {#if stats}
             <StatisticsPanel stats={stats} />
