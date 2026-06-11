@@ -261,7 +261,7 @@ export function findAnnotationById(scheme: AssemblyScheme, id: string): Annotati
   return scheme.annotations.find((a) => a.id === id);
 }
 export function isNameUniqueInScheme(scheme: AssemblyScheme, name: string, excludeId?: string): boolean {
-  return !scheme.fragments.every((f) => f.name !== name || f.id === excludeId);
+  return !scheme.fragments.some((f) => f.name === name && f.id !== excludeId);
 }
 export function sortFragmentsByZIndex(fragments: MapFragment[]): MapFragment[] {
   return [...fragments].sort((a, b) => a.zIndex - b.zIndex);

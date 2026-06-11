@@ -510,7 +510,7 @@
   }
 
   function handleWheel(e: WheelEvent) {
-    if (!stage || readOnly) return;
+    if (!stage) return;
     e.preventDefault();
     const oldScale = stage.scaleX();
     const ptr = stage.getPointerPosition();
@@ -558,7 +558,7 @@
   }
 
   function handleStageMouseUp() {
-    if (isPanning && stage && !readOnly) {
+    if (isPanning && stage) {
       dispatch('viewportChange', { scale: stage.scaleX(), x: stage.x(), y: stage.y() });
     }
     isPanning = false;
@@ -601,7 +601,6 @@
   $: if (activeTool !== 'annotate-river' && activeTool !== 'annotate-boundary') clearDrawing();
 
   $: viewportScale, viewportX, viewportY, stage && (() => {
-    if (readOnly) return;
     stage.scale({ x: viewportScale, y: viewportScale });
     stage.position({ x: viewportX, y: viewportY });
     stage.batchDraw();

@@ -13,7 +13,6 @@
   }>();
 
   let deletingId: string | null = null;
-  let forceDelete = false;
   let deleteDialogOpen = false;
 
   function selectFragment(id: string) {
@@ -42,34 +41,20 @@
 
   function requestDelete(id: string) {
     if (!scheme) return;
-    const annotations = getAnnotationsByFragmentId(scheme.annotations, id);
-    if (annotations.length > 0) {
-      deletingId = id;
-      forceDelete = false;
-      deleteDialogOpen = true;
-    } else {
-      const result = appStore.deleteFragment(id);
-      if (!result.success) {
-        console.error(result.error);
-      }
-    }
+    deletingId = id;
+    deleteDialogOpen = true;
   }
 
   function confirmDelete() {
-    if (deletingId && forceDelete) {
-      appStore.forceDeleteFragment(deletingId);
-    } else if (deletingId) {
-      appStore.deleteFragment(deletingId);
-    }
+    if (!deletingId) return;
+    appStore.forceDeleteFragment(deletingId);
     deleteDialogOpen = false;
     deletingId = null;
-    forceDelete = false;
   }
 
   function cancelDelete() {
     deleteDialogOpen = false;
     deletingId = null;
-    forceDelete = false;
   }
 
   function getAnnotationCount(fragmentId: string): number {
@@ -205,17 +190,17 @@
   title="确认删除碎片"
   open={deleteDialogOpen}
   danger={true}
-  confirmText={forceDelete ? '强制删除（含批注）' : '我已知晓，取消删除'}
+  confirmText="确认删除"
   on:confirm={confirmDelete}
   on:cancel={cancelDelete}
 >
   <div class="space-y-3">
-    <div class="text-ink-700">
-      该碎片包含 <span class="font-semibold text-red-600">
-        {scheme && deletingId ? getAnnotationsByFragmentId(scheme.annotations, deletingId).length : 0}
-      </span> 条批注：
-    </div>
-    {#if scheme && deletingId}
+    {#if scheme && deletingId && getAnnotationsByFragmentId(scheme.annotations, deletingId).length > 0}
+      <div class="text-ink-700">
+        该碎片包含 <span class="font-semibold text-red-600">
+          {getAnnotationsByFragmentId(scheme.annotations, deletingId).length}
+        </span> 条批注，删除碎片将同时删除这些批注：
+      </div>
       <div class="bg-parchment-100 rounded-md p-2 max-h-40 overflow-y-auto scrollbar-thin text-sm space-y-1">
         {#each getAnnotationsByFragmentId(scheme.annotations, deletingId) as a}
           <div class="text-ink-600">
@@ -224,10 +209,13 @@
           </div>
         {/each}
       </div>
+      <div class="text-sm text-ink-500">
+        ⚠️ 此操作不可撤销，请确认是否继续删除。
+      </div>
+    {:else}
+      <div class="text-ink-700">
+        确定要删除该碎片吗？此操作不可撤销。
+      </div>
     {/if}
-    <label class="flex items-center gap-2 text-sm text-ink-700 cursor-pointer">
-      <input type="checkbox" bind:checked={forceDelete} class="rounded border-parchment-300" />
-      <span>确认删除碎片及其所有批注（此操作不可撤销）</span>
-    </label>
   </div>
 </ConfirmDialog>

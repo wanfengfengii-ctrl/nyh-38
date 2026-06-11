@@ -10,6 +10,13 @@ import type {
   AnnotationType,
   SpliceRelation,
   SpliceRelationGroup,
+  Timeline,
+  MapVersion,
+  EvolutionStatistics,
+  AnnotationChange,
+  PlaceAnnotation,
+  RiverAnnotation,
+  BoundaryAnnotation,
 } from '@/types';
 import { SYSTEM_CONFIG, ANNOTATION_TYPE_LABELS } from '@/types';
 import {
@@ -45,6 +52,13 @@ function createInitialState(): AppState {
     viewportScale: 1,
     viewportX: 0,
     viewportY: 0,
+    timelines: [],
+    mapVersions: [],
+    currentTimelineId: null,
+    isTimelineMode: false,
+    timelineSelectedVersionId: null,
+    timelineCompareFromId: null,
+    timelineCompareToId: null,
   };
 }
 
@@ -148,21 +162,23 @@ function createAppStore() {
       return result;
     },
 
-    updateFragment(id: string, updates: Partial<MapFragment>) {
-      update((state) => {
-        const scheme = getCurrentScheme(state);
-        if (!scheme) return state;
+    updateFragment(id: string, updates: Partial<MapFragment>): { success: boolean; error?: string } {
+      const state = get({ subscribe });
+      const scheme = getCurrentScheme(state);
+      if (!scheme) return { success: false, error: '当前没有激活的方案' };
 
-        if (updates.name !== undefined) {
-          if (isNameUniqueInScheme(scheme, updates.name, id)) {
-            console.warn(`碎片名称 "${updates.name}" 已存在`);
-            return state;
-          }
+      if (updates.name !== undefined) {
+        if (!isNameUniqueInScheme(scheme, updates.name, id)) {
+          return { success: false, error: `碎片名称 "${updates.name}" 已存在` };
         }
+      }
 
-        const newSchemes = state.schemes.map((s) => {
-          if (s.id !== scheme.id) return s;
-          const newFragments = s.fragments.map((f) => {
+      update((st) => {
+        const s = getCurrentScheme(st);
+        if (!s) return st;
+        const newSchemes = st.schemes.map((sc) => {
+          if (sc.id !== s.id) return sc;
+          const newFragments = sc.fragments.map((f) => {
             if (f.id !== id) return f;
             let rotation = updates.rotation !== undefined ? updates.rotation : f.rotation;
             rotation = normalizeRotation(rotation, SYSTEM_CONFIG.MIN_ROTATION, SYSTEM_CONFIG.MAX_ROTATION);
@@ -179,11 +195,12 @@ function createAppStore() {
               updatedAt: now(),
             };
           });
-          return { ...s, fragments: newFragments, updatedAt: now() };
+          return { ...sc, fragments: newFragments, updatedAt: now() };
         });
-
-        return { ...state, schemes: newSchemes };
+        return { ...st, schemes: newSchemes };
       });
+
+      return { success: true };
     },
 
     deleteFragment(id: string): { success: boolean; error?: string } {

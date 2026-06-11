@@ -16,6 +16,7 @@
   let localScaleX = 1;
   let localScaleY = 1;
   let localOpacity = 1;
+  let nameError = '';
 
   $: if (fragment) {
     localName = fragment.name;
@@ -25,6 +26,7 @@
     localScaleX = fragment.scaleX;
     localScaleY = fragment.scaleY;
     localOpacity = fragment.opacity;
+    nameError = '';
   }
 
   function updateField(field: keyof MapFragment, value: number | string) {
@@ -35,9 +37,16 @@
   function handleNameBlur() {
     if (!fragment) return;
     if (localName.trim() && localName !== fragment.name) {
-      updateField('name', localName.trim());
+      const result = appStore.updateFragment(fragment.id, { name: localName.trim() });
+      if (!result.success) {
+        nameError = result.error || '名称修改失败';
+        localName = fragment.name;
+      } else {
+        nameError = '';
+      }
     } else {
       localName = fragment.name;
+      nameError = '';
     }
   }
 
@@ -88,10 +97,14 @@
         <label class="label text-xs">名称</label>
         <input
           class="input text-sm"
+          class:border-red-400={!!nameError}
           bind:value={localName}
           on:blur={handleNameBlur}
           on:keydown={(e) => e.key === 'Enter' && handleNameBlur()}
         />
+        {#if nameError}
+          <div class="text-xs text-red-600 mt-1">{nameError}</div>
+        {/if}
       </div>
 
       <div class="grid grid-cols-2 gap-2">

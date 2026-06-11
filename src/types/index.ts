@@ -104,6 +104,13 @@ export interface AppState {
   viewportScale: number;
   viewportX: number;
   viewportY: number;
+  timelines: Timeline[];
+  mapVersions: MapVersion[];
+  currentTimelineId: string | null;
+  isTimelineMode: boolean;
+  timelineSelectedVersionId: string | null;
+  timelineCompareFromId: string | null;
+  timelineCompareToId: string | null;
 }
 
 export type ToolType = 'select' | 'pan' | 'annotate-place' | 'annotate-river' | 'annotate-boundary' | 'annotate-note';
@@ -146,3 +153,77 @@ export interface SpliceRelationGroup {
   fragments: MapFragment[];
   relations: SpliceRelation[];
 }
+
+export interface MapVersion {
+  id: string;
+  timelineId: string;
+  schemeId: string;
+  dynasty: string;
+  year: string;
+  yearNumeric: number;
+  source: string;
+  mapType: string;
+  scribe?: string;
+  provenance?: string;
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Timeline {
+  id: string;
+  name: string;
+  region: string;
+  description?: string;
+  versionIds: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type AnnotationChangeType = 'added' | 'removed' | 'modified' | 'unchanged';
+
+export interface AnnotationChange {
+  type: AnnotationChangeType;
+  annotationId: string;
+  annotationLabel: string;
+  annotationType: AnnotationType;
+  fromVersionId?: string;
+  toVersionId: string;
+  fromLabel?: string;
+  toLabel?: string;
+  fromDescription?: string;
+  toDescription?: string;
+  fromColor?: string;
+  toColor?: string;
+  positionChanged?: boolean;
+  pointsChanged?: boolean;
+}
+
+export interface EvolutionStatistics {
+  versionsCount: number;
+  dateRange: { start: number; end: number };
+  totalAnnotationChanges: number;
+  addedCount: number;
+  removedCount: number;
+  modifiedCount: number;
+  unchangedCount: number;
+  byType: {
+    place: { added: number; removed: number; modified: number; unchanged: number };
+    river: { added: number; removed: number; modified: number; unchanged: number };
+    boundary: { added: number; removed: number; modified: number; unchanged: number };
+    note: { added: number; removed: number; modified: number; unchanged: number };
+  };
+  annotationChanges: AnnotationChange[];
+}
+
+export const DYNASTY_OPTIONS = [
+  '先秦', '秦', '西汉', '东汉', '三国', '西晋', '东晋',
+  '南北朝', '隋', '唐', '五代', '北宋', '南宋', '元',
+  '明', '清', '民国', '现代', '不详'
+] as const;
+
+export const MAP_TYPE_OPTIONS = [
+  '疆域图', '行政区划图', '山川形势图', '交通图',
+  '水利图', '海防图', '边防图', '都会图', '风景名胜图',
+  '舆地图', '方志附图', '其他'
+] as const;
