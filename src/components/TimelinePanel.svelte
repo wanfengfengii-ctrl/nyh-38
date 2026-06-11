@@ -48,14 +48,17 @@
   let editingVersionId: string | null = null;
 
   let vSchemeId = '';
-  let vDynasty = DYNASTY_OPTIONS[0];
+  let vDynasty: string = DYNASTY_OPTIONS[0] as string;
   let vYear = '';
   let vYearNumeric = 0;
   let vSource = '';
-  let vMapType = MAP_TYPE_OPTIONS[0];
+  let vMapType: string = MAP_TYPE_OPTIONS[0] as string;
   let vScribe = '';
   let vProvenance = '';
   let vNotes = '';
+
+  const dynastyList: string[] = DYNASTY_OPTIONS as unknown as string[];
+  const mapTypeList: string[] = MAP_TYPE_OPTIONS as unknown as string[];
 
   function createTimeline() {
     if (!newTimelineName.trim() || !newTimelineRegion.trim()) return;
@@ -413,7 +416,7 @@
             <div>
               <label class="label">朝代 *</label>
               <select class="input text-sm" bind:value={vDynasty}>
-                {#each DYNASTY_OPTIONS as d}
+                {#each dynastyList as d}
                   <option value={d}>{d}</option>
                 {/each}
               </select>
@@ -450,7 +453,7 @@
             <div>
               <label class="label">地图类型</label>
               <select class="input text-sm" bind:value={vMapType}>
-                {#each MAP_TYPE_OPTIONS as mt}
+                {#each mapTypeList as mt}
                   <option value={mt}>{mt}</option>
                 {/each}
               </select>

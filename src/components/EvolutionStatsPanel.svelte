@@ -7,6 +7,7 @@
   let fullStats = $evolutionStatistics;
   let pairStats = $pairEvolutionStats;
   let isCompareSet = false;
+  let activeStats: EvolutionStatistics | null = null;
 
   const unsubs = [
     evolutionStatistics.subscribe((v) => (fullStats = v)),
@@ -17,7 +18,7 @@
   ];
   onDestroy(() => unsubs.forEach((u) => u()));
 
-  $: activeStats: EvolutionStatistics | null = isCompareSet ? pairStats : fullStats;
+  $: activeStats = isCompareSet ? pairStats : fullStats;
 
   function formatYear(year: number): string {
     if (year < 0) return `公元前${Math.abs(year)}年`;
@@ -60,8 +61,18 @@
     return (val / total) * 100;
   }
 
+  const annotationTypes: AnnotationType[] = ['place', 'river', 'boundary', 'note'];
+  const changeTypes = ['all', 'added', 'removed', 'modified', 'unchanged'] as const;
+  const changeTypeLabels: Record<typeof changeTypes[number], string> = {
+    all: '全部变化',
+    added: '新增',
+    removed: '消失',
+    modified: '变更',
+    unchanged: '未变',
+  };
+
   let filterType: 'all' | AnnotationType = 'all';
-  let filterChange: 'all' | 'added' | 'removed' | 'modified' | 'unchanged' = 'all';
+  let filterChange: typeof changeTypes[number] = 'all';
 
   $: filteredChanges = (activeStats?.annotationChanges || []).filter((c) => {
     if (filterType !== 'all' && c.annotationType !== filterType) return false;
@@ -142,7 +153,7 @@
         <div class="border-t border-parchment-200 pt-3">
           <div class="text-sm font-medium text-ink-700 mb-2">按要素类型分类</div>
           <div class="space-y-2">
-            {#each (['place', 'river', 'boundary', 'note'] as AnnotationType[]) as type}
+            {#each annotationTypes as type}
               {@const bt = activeStats.byType[type]}
               {@const total = bt.added + bt.removed + bt.modified + bt.unchanged}
               <div class="bg-parchment-50 rounded-md p-2 border border-parchment-200">
@@ -199,7 +210,7 @@
             >
               全部
             </button>
-            {#each (['place', 'river', 'boundary', 'note'] as AnnotationType[]) as t}
+            {#each annotationTypes as t}
               <button
                 class="text-xs px-2 py-1 rounded-md transition-colors"
                 class:bg-parchment-600={filterType === t}
@@ -213,7 +224,7 @@
             {/each}
           </div>
           <div class="flex gap-1 flex-wrap mb-2">
-            {#each (['all', 'added', 'removed', 'modified', 'unchanged'] as const) as ct}
+            {#each changeTypes as ct}
               <button
                 class="text-xs px-2 py-1 rounded-md transition-colors"
                 class:bg-parchment-600={filterChange === ct}
@@ -222,7 +233,7 @@
                 class:text-ink-600={filterChange !== ct}
                 on:click={() => (filterChange = ct)}
               >
-                {ct === 'all' ? '全部变化' : ct === 'added' ? '新增' : ct === 'removed' ? '消失' : ct === 'modified' ? '变更' : '未变'}
+                {changeTypeLabels[ct]}
               </button>
             {/each}
           </div>
