@@ -1,151 +1,48 @@
 import { nanoid } from 'nanoid';
 import type { MapFragment, Annotation, AssemblyScheme, Point, AnnotationType, SpliceRelation, SpliceRelationGroup } from '@/types';
-import { SYSTEM_CONFIG } from '@/types';
 
-export interface ValidationResult {
-  success: boolean;
-  errors: string[];
-  warnings: string[];
-}
+export * from '@/lib/utils/errors';
+export * from '@/lib/utils/statistics';
+export * from '@/lib/utils/evolution';
+export { validateSchemeImport, cleanupEvidences, validateMapVersionForm, validateTimelineForm, validateFragmentForm, validateFragmentUpdate, type MapVersionFormData, type TimelineFormData, type FragmentFormData } from '@/lib/utils/validation';
 
-export function validateSchemeImport(data: unknown): ValidationResult {
-  const result: ValidationResult = { success: true, errors: [], warnings: [] };
-
-  if (!validateSchemeData(data)) {
-    result.errors.push('方案格式无效：缺少必要字段或数据类型错误');
-    result.success = false;
-    return result;
-  }
-
-  const scheme = data as AssemblyScheme;
-
-  const fragmentNames = new Map<string, number>();
-  const fragmentIds = new Set<string>();
-
-  for (let i = 0; i < scheme.fragments.length; i++) {
-    const frag = scheme.fragments[i];
-
-    if (fragmentNames.has(frag.name)) {
-      const firstIndex = fragmentNames.get(frag.name)!;
-      result.errors.push(`碎片名称不唯一："${frag.name}" 同时出现在第 ${firstIndex + 1} 和第 ${i + 1} 个碎片`);
-    } else {
-      fragmentNames.set(frag.name, i);
-    }
-
-    if (fragmentIds.has(frag.id)) {
-      result.errors.push(`碎片 ID 不唯一："${frag.id}" 重复出现`);
-    } else {
-      fragmentIds.add(frag.id);
-    }
-
-    if (frag.rotation < SYSTEM_CONFIG.MIN_ROTATION || frag.rotation > SYSTEM_CONFIG.MAX_ROTATION) {
-      result.errors.push(`碎片 "${frag.name}" 旋转角度超出范围：${frag.rotation}°（允许范围：${SYSTEM_CONFIG.MIN_ROTATION}° 到 ${SYSTEM_CONFIG.MAX_ROTATION}°）`);
-    }
-
-    if (frag.scaleX < SYSTEM_CONFIG.MIN_SCALE || frag.scaleX > SYSTEM_CONFIG.MAX_SCALE) {
-      result.errors.push(`碎片 "${frag.name}" 水平缩放超出范围：${frag.scaleX}（允许范围：${SYSTEM_CONFIG.MIN_SCALE} 到 ${SYSTEM_CONFIG.MAX_SCALE}）`);
-    }
-
-    if (frag.scaleY < SYSTEM_CONFIG.MIN_SCALE || frag.scaleY > SYSTEM_CONFIG.MAX_SCALE) {
-      result.errors.push(`碎片 "${frag.name}" 垂直缩放超出范围：${frag.scaleY}（允许范围：${SYSTEM_CONFIG.MIN_SCALE} 到 ${SYSTEM_CONFIG.MAX_SCALE}）`);
-    }
-
-    if (frag.name.trim().length === 0) {
-      result.errors.push(`第 ${i + 1} 个碎片名称不能为空`);
-    }
-
-    for (const matchedId of frag.matchedWithIds) {
-      if (!fragmentIds.has(matchedId)) {
-        result.warnings.push(`碎片 "${frag.name}" 的 matchedWithIds 包含无效的 ID "${matchedId}"，导入后将自动清除`);
-      }
-    }
-  }
-
-  for (let i = 0; i < scheme.annotations.length; i++) {
-    const ann = scheme.annotations[i];
-
-    if (!fragmentIds.has(ann.fragmentId)) {
-      result.errors.push(`批注 "${ann.label}" 引用的 fragmentId "${ann.fragmentId}" 无效，不存在对应的碎片`);
-    }
-
-    if (!ann.label || ann.label.trim().length === 0) {
-      result.errors.push(`第 ${i + 1} 条批注的 label 字段不能为空`);
-    }
-
-    if (!ann.color || ann.color.trim().length === 0) {
-      result.errors.push(`批注 "${ann.label}" 的 color 字段不能为空`);
-    }
-
-    if (ann.description === undefined || ann.description === null) {
-      result.errors.push(`批注 "${ann.label}" 缺少 description 字段`);
-    }
-
-    if (ann.type === 'place' || ann.type === 'note') {
-      if (!ann.position || typeof ann.position.x !== 'number' || typeof ann.position.y !== 'number') {
-        result.errors.push(`批注 "${ann.label}" (${ann.type}) 缺少完整的 position 字段`);
-      }
-      if (ann.type === 'note') {
-        if (typeof ann.fontSize !== 'number' || ann.fontSize <= 0) {
-          result.errors.push(`批注 "${ann.label}" (note) 的 fontSize 字段无效`);
-        }
-      }
-    }
-
-    if (ann.type === 'river' || ann.type === 'boundary') {
-      if (!Array.isArray(ann.points) || ann.points.length < 2) {
-        result.errors.push(`批注 "${ann.label}" (${ann.type}) 的 points 字段至少需要 2 个点`);
-      } else {
-        for (let j = 0; j < ann.points.length; j++) {
-          const pt = ann.points[j];
-          if (typeof pt.x !== 'number' || typeof pt.y !== 'number') {
-            result.errors.push(`批注 "${ann.label}" (${ann.type}) 的第 ${j + 1} 个点坐标不完整`);
-          }
-        }
-      }
-      if (typeof ann.strokeWidth !== 'number' || ann.strokeWidth <= 0) {
-        result.errors.push(`批注 "${ann.label}" (${ann.type}) 的 strokeWidth 字段无效`);
-      }
-      if (ann.type === 'boundary' && typeof ann.closed !== 'boolean') {
-        result.errors.push(`批注 "${ann.label}" (boundary) 的 closed 字段必须为布尔值`);
-      }
-    }
-  }
-
-  if (result.errors.length > 0) {
-    result.success = false;
-  }
-
-  return result;
-}
 export function generateId(): string {
   return nanoid(10);
 }
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
+
 export function now(): number {
   return Date.now();
 }
+
 export function normalizeRotation(rotation: number, min: number, max: number): number {
   let r = rotation;
   while (r < min) r += 360;
   while (r > max) r -= 360;
   return r;
 }
+
 export function calculateFragmentArea(fragment: MapFragment): number {
   const w = fragment.originalWidth * Math.abs(fragment.scaleX);
   const h = fragment.originalHeight * Math.abs(fragment.scaleY);
   return w * h;
 }
+
 export function isAnnotationOnFragment(fragment: MapFragment, annotation: Annotation): boolean {
   return annotation.fragmentId === fragment.id;
 }
+
 export function getAnnotationsByFragmentId(annotations: Annotation[], fragmentId: string): Annotation[] {
   return annotations.filter((a) => a.fragmentId === fragmentId);
 }
+
 export function hasAnnotations(fragmentId: string, annotations: Annotation[]): boolean {
   return annotations.some((a) => a.fragmentId === fragmentId);
 }
+
 export function countAnnotationsByType(annotations: Annotation[]): Record<AnnotationType, number> {
   return {
     place: 0,
@@ -158,9 +55,11 @@ export function countAnnotationsByType(annotations: Annotation[]): Record<Annota
     }, {}),
   };
 }
+
 export function distance(a: Point, b: Point): number {
   return Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2));
 }
+
 export function getFragmentTransform(fragment: MapFragment) {
   return {
     x: fragment.x,
@@ -170,12 +69,15 @@ export function getFragmentTransform(fragment: MapFragment) {
     scaleY: fragment.scaleY,
   };
 }
+
 export function cloneFragment(fragment: MapFragment): MapFragment {
   return JSON.parse(JSON.stringify(fragment));
 }
+
 export function cloneScheme(scheme: AssemblyScheme): AssemblyScheme {
   return JSON.parse(JSON.stringify(scheme));
 }
+
 export function validateSchemeData(data: unknown): data is AssemblyScheme {
   if (typeof data !== 'object' || data === null) return false;
   const obj = data as Record<string, unknown>;
@@ -254,21 +156,27 @@ export function validateSchemeData(data: unknown): data is AssemblyScheme {
   }
   return true;
 }
+
 export function findFragmentById(scheme: AssemblyScheme, id: string): MapFragment | undefined {
   return scheme.fragments.find((f) => f.id === id);
 }
+
 export function findAnnotationById(scheme: AssemblyScheme, id: string): Annotation | undefined {
   return scheme.annotations.find((a) => a.id === id);
 }
+
 export function isNameUniqueInScheme(scheme: AssemblyScheme, name: string, excludeId?: string): boolean {
   return !scheme.fragments.some((f) => f.name === name && f.id !== excludeId);
 }
+
 export function sortFragmentsByZIndex(fragments: MapFragment[]): MapFragment[] {
   return [...fragments].sort((a, b) => a.zIndex - b.zIndex);
 }
+
 export function getMaxZIndex(fragments: MapFragment[]): number {
   return fragments.reduce((max, f) => Math.max(max, f.zIndex), 0);
 }
+
 export function createDefaultScheme(name = '方案一'): AssemblyScheme {
   return {
     id: generateId(),
@@ -279,6 +187,18 @@ export function createDefaultScheme(name = '方案一'): AssemblyScheme {
     viewport: { scale: 1, x: 0, y: 0 },
     createdAt: now(),
     updatedAt: now(),
+  };
+}
+
+export function createDefaultTimeline(): { id: string; name: string; description: string; versions: []; createdAt: number; updatedAt: number; changeEvidences: {} } {
+  return {
+    id: generateId(),
+    name: '默认时间轴',
+    description: '',
+    versions: [],
+    createdAt: now(),
+    updatedAt: now(),
+    changeEvidences: {},
   };
 }
 

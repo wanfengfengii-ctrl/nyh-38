@@ -1,3 +1,17 @@
+/**
+ * 遗留兼容 API（@deprecated - 请迁移到新的模块化 API）
+ * 
+ * 新模块化 API 请直接从以下路径导入：
+ * - 方案、碎片、批注管理：import { schemeStore, currentScheme, currentFragments, currentAnnotations } from '@/lib/stores/schemeStore'
+ * - 时间轴、版本管理：import { timelineStore, currentVersion, versions, changeEvidences } from '@/lib/stores/timelineStore'
+ * - UI 状态管理：import { uiStore, isAnnotationTool, isPanTool, isSelectTool } from '@/lib/stores/uiStore'
+ * - 证据链编辑 hook：import { useEvidenceEditor } from '@/lib/hooks/useEvidenceEditor'
+ * - 视口同步 hook：import { useViewportSync } from '@/lib/hooks/useViewportSync'
+ * - 统计计算工具：import { calculateStatistics, aggregateEvolutionStats } from '@/lib/utils/statistics'
+ * - 时序演变工具：import { computeAnnotationChanges, calculateFullEvolutionStats } from '@/lib/utils/evolution'
+ * - 校验工具：import { validateSchemeImport, validateMapVersionForm, validateFragmentForm } from '@/lib/utils/validation'
+ * - 错误处理：import { success, failure, type Result } from '@/lib/utils/errors'
+ */
 import { writable, derived, get } from 'svelte/store';
 import type {
   AssemblyScheme,
@@ -66,6 +80,27 @@ function createInitialState(): AppState {
   };
 }
 
+/**
+ * @deprecated 已废弃，请使用新的模块化 stores：
+ * - schemeStore: 方案、碎片、批注管理
+ * - timelineStore: 时间轴、版本管理
+ * - uiStore: UI 状态管理
+ * 
+ * 迁移指南：
+ * - store.setActiveTool() → uiStore.setToolMode()
+ * - store.setSelectedFragment() → uiStore.setSelectedFragment()
+ * - store.setViewport() → schemeStore.setViewport()
+ * - store.addFragment() → schemeStore.addFragment()
+ * - store.updateFragment() → schemeStore.updateFragment()
+ * - store.deleteFragment() → schemeStore.deleteFragment()
+ * - store.addAnnotation() → schemeStore.addAnnotation()
+ * - store.updateAnnotation() → schemeStore.updateAnnotation()
+ * - store.deleteAnnotation() → schemeStore.deleteAnnotation()
+ * - store.addVersion() → timelineStore.addVersion()
+ * - store.updateVersion() → timelineStore.updateVersion()
+ * - store.deleteVersion() → timelineStore.deleteVersion()
+ * - store.switchVersion() → timelineStore.switchVersion()
+ */
 function createAppStore() {
   const { subscribe, set, update } = writable<AppState>(createInitialState());
 
