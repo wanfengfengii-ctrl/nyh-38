@@ -92,6 +92,11 @@ export interface Statistics {
   visibleFragments: number;
 }
 
+export interface ChangeEvidenceEntry {
+  confidence?: ConfidenceLevel;
+  evidences?: Evidence[];
+}
+
 export interface AppState {
   schemes: AssemblyScheme[];
   currentSchemeId: string | null;
@@ -111,6 +116,7 @@ export interface AppState {
   timelineSelectedVersionId: string | null;
   timelineCompareFromId: string | null;
   timelineCompareToId: string | null;
+  changeEvidences: Record<string, ChangeEvidenceEntry>;
 }
 
 export type ToolType = 'select' | 'pan' | 'annotate-place' | 'annotate-river' | 'annotate-boundary' | 'annotate-note';
@@ -166,6 +172,8 @@ export interface MapVersion {
   scribe?: string;
   provenance?: string;
   notes?: string;
+  confidence?: ConfidenceLevel;
+  evidences?: Evidence[];
   createdAt: number;
   updatedAt: number;
 }
@@ -179,6 +187,36 @@ export interface Timeline {
   createdAt: number;
   updatedAt: number;
 }
+
+export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'pending';
+
+export interface Evidence {
+  id: string;
+  source: string;
+  pageOrCallNumber: string;
+  description: string;
+}
+
+export const CONFIDENCE_LABELS: Record<ConfidenceLevel, string> = {
+  high: '高可信度',
+  medium: '中可信度',
+  low: '低可信度',
+  pending: '待考证',
+};
+
+export const CONFIDENCE_COLORS: Record<ConfidenceLevel, { dot: string; bg: string; text: string; border: string; solid: string }> = {
+  high: { dot: '#16a34a', bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-400', solid: 'bg-green-500' },
+  medium: { dot: '#ca8a04', bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-400', solid: 'bg-amber-500' },
+  low: { dot: '#ea580c', bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-400', solid: 'bg-orange-500' },
+  pending: { dot: '#6b7280', bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-400', solid: 'bg-gray-500' },
+};
+
+export const CONFIDENCE_ICONS: Record<ConfidenceLevel, string> = {
+  high: '✅',
+  medium: '☑️',
+  low: '⚠️',
+  pending: '❓',
+};
 
 export type AnnotationChangeType = 'added' | 'removed' | 'modified' | 'unchanged';
 
@@ -197,6 +235,8 @@ export interface AnnotationChange {
   toColor?: string;
   positionChanged?: boolean;
   pointsChanged?: boolean;
+  confidence?: ConfidenceLevel;
+  evidences?: Evidence[];
 }
 
 export interface EvolutionStatistics {
@@ -214,6 +254,11 @@ export interface EvolutionStatistics {
     note: { added: number; removed: number; modified: number; unchanged: number };
   };
   annotationChanges: AnnotationChange[];
+  versionsByDynasty: Record<string, number>;
+  confidenceDistribution: Record<ConfidenceLevel, number>;
+  versionsWithoutEvidence: number;
+  changesWithoutEvidence: number;
+  changesConfidenceDistribution: Record<ConfidenceLevel, number>;
 }
 
 export const DYNASTY_OPTIONS = [

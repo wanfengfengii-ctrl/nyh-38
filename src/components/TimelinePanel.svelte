@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy } from 'svelte';
-  import type { Timeline, MapVersion, AssemblyScheme } from '@/types';
-  import { DYNASTY_OPTIONS, MAP_TYPE_OPTIONS } from '@/types';
+  import type { Timeline, MapVersion, AssemblyScheme, ConfidenceLevel, Evidence } from '@/types';
+  import { DYNASTY_OPTIONS, MAP_TYPE_OPTIONS, CONFIDENCE_LABELS, CONFIDENCE_COLORS, CONFIDENCE_ICONS } from '@/types';
+  import { generateId } from '@/lib/utils';
   import {
     appStore,
     currentTimeline,
@@ -56,7 +57,10 @@
   let vScribe = '';
   let vProvenance = '';
   let vNotes = '';
+  let vConfidence: ConfidenceLevel = 'pending';
+  let vEvidences: Evidence[] = [];
 
+  const confidenceLevels: ConfidenceLevel[] = ['high', 'medium', 'low', 'pending'];
   const dynastyList: string[] = DYNASTY_OPTIONS as unknown as string[];
   const mapTypeList: string[] = MAP_TYPE_OPTIONS as unknown as string[];
 
@@ -107,6 +111,8 @@
       vScribe = version.scribe || '';
       vProvenance = version.provenance || '';
       vNotes = version.notes || '';
+      vConfidence = version.confidence || 'pending';
+      vEvidences = (version.evidences || []).map((e) => ({ ...e }));
     } else {
       editingVersionId = null;
       vSchemeId = schemes[0]?.id || '';
@@ -118,13 +124,36 @@
       vScribe = '';
       vProvenance = '';
       vNotes = '';
+      vConfidence = 'pending';
+      vEvidences = [];
     }
     showVersionForm = true;
+  }
+
+  function addEvidence() {
+    vEvidences = [...vEvidences, { id: generateId(), source: '', pageOrCallNumber: '', description: '' }];
+  }
+
+  function removeEvidence(id: string) {
+    vEvidences = vEvidences.filter((e) => e.id !== id);
+  }
+
+  function updateEvidence(id: string, field: keyof Evidence, value: string) {
+    vEvidences = vEvidences.map((e) => (e.id === id ? { ...e, [field]: value } : e));
   }
 
   function submitVersion() {
     if (!curTimeline) return;
     if (!vSchemeId || !vYear.trim() || !vSource.trim()) return;
+
+    const cleanedEvidences = vEvidences
+      .filter((e) => e.source.trim() || e.pageOrCallNumber.trim() || e.description.trim())
+      .map((e) => ({
+        id: e.id,
+        source: e.source.trim(),
+        pageOrCallNumber: e.pageOrCallNumber.trim(),
+        description: e.description.trim(),
+      }));
 
     const data = {
       schemeId: vSchemeId,
@@ -136,6 +165,8 @@
       scribe: vScribe.trim() || undefined,
       provenance: vProvenance.trim() || undefined,
       notes: vNotes.trim() || undefined,
+      confidence: vConfidence,
+      evidences: cleanedEvidences.length > 0 ? cleanedEvidences : undefined,
     };
 
     if (editingVersionId) {
@@ -334,6 +365,15 @@
                 <div class="flex items-center gap-1.5 flex-wrap">
                   <span class="tag bg-amber-100 text-amber-800">{v.dynasty}</span>
                   <span class="font-semibold text-sm text-ink-800">{v.year}</span>
+                  {#if v.confidence}
+                    {@const cc = CONFIDENCE_COLORS[v.confidence]}
+                    <span class="tag {cc.bg} {cc.text}" title={CONFIDENCE_LABELS[v.confidence]}>
+                      {CONFIDENCE_ICONS[v.confidence]} {CONFIDENCE_LABELS[v.confidence]}
+                    </span>
+                  {/if}
+                  {#if v.evidences && v.evidences.length > 0}
+                    <span class="tag bg-blue-50 text-blue-700" title="证据条目">📚 {v.evidences.length}</span>
+                  {/if}
                   {#if $appStore.timelineSelectedVersionId === v.id}
                     <span class="tag bg-parchment-600 text-white ml-auto">查看中</span>
                   {/if}
@@ -468,6 +508,86 @@
           <div>
             <label class="label">版本 / 藏馆</label>
             <input class="input text-sm" placeholder="如：武英殿本 / 国图藏本" bind:value={vProvenance} />
+          </div>
+
+          <div>
+            <label class="label">版本可信度</label>
+            <div class="grid grid-cols-4 gap-1.5">
+              {#each confidenceLevels as level}
+                {@const cc = CONFIDENCE_COLORS[level]}
+                <button
+                  type="button"
+                  class="text-xs px-2 py-1.5 rounded-md border-2 transition-all flex items-center justify-center gap-1"
+                  class:{cc.border}={vConfidence === level}
+                  class:{cc.bg}={vConfidence === level}
+                  class:{cc.text}={vConfidence === level}
+                  class:border-parchment-200={vConfidence !== level}
+                  class:bg-white={vConfidence !== level}
+                  class:text-ink-600={vConfidence !== level}
+                  on:click={() => (vConfidence = level)}
+                >
+                  <span>{CONFIDENCE_ICONS[level]}</span>
+                  <span class="font-medium">{CONFIDENCE_LABELS[level]}</span>
+                </button>
+              {/each}
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="label mb-0">证据链（文献出处）</label>
+              <button
+                type="button"
+                class="text-xs px-2 py-0.5 rounded bg-parchment-200 text-ink-700 hover:bg-parchment-300 transition-colors"
+                on:click={addEvidence}
+              >
+                ＋ 添加证据
+              </button>
+            </div>
+            {#if vEvidences.length === 0}
+              <div class="text-xs text-ink-400 italic p-3 bg-parchment-100 rounded-md text-center">
+                暂无证据记录，点击上方按钮添加
+              </div>
+            {:else}
+              <div class="space-y-2">
+                {#each vEvidences as ev, idx (ev.id)}
+                  <div class="p-2.5 bg-white border border-parchment-200 rounded-md space-y-2">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs font-medium text-ink-600">证据 {idx + 1}</span>
+                      <button
+                        type="button"
+                        class="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-1.5 py-0.5 rounded transition-colors"
+                        on:click={() => removeEvidence(ev.id)}
+                      >
+                        删除
+                      </button>
+                    </div>
+                    <div>
+                      <input
+                        class="input text-xs"
+                        placeholder="📖 文献出处（如：《水经注》卷四十）"
+                        value={ev.source}
+                        on:input={(e) => updateEvidence(ev.id, 'source', (e.target as HTMLInputElement).value)}
+                      />
+                    </div>
+                    <div class="grid grid-cols-2 gap-1.5">
+                      <input
+                        class="input text-xs"
+                        placeholder="📄 页码 / 馆藏号"
+                        value={ev.pageOrCallNumber}
+                        on:input={(e) => updateEvidence(ev.id, 'pageOrCallNumber', (e.target as HTMLInputElement).value)}
+                      />
+                      <input
+                        class="input text-xs"
+                        placeholder="✍️ 证据说明（简要描述）"
+                        value={ev.description}
+                        on:input={(e) => updateEvidence(ev.id, 'description', (e.target as HTMLInputElement).value)}
+                      />
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
           </div>
 
           <div>

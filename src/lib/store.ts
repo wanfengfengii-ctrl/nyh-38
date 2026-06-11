@@ -17,6 +17,9 @@ import type {
   PlaceAnnotation,
   RiverAnnotation,
   BoundaryAnnotation,
+  ConfidenceLevel,
+  Evidence,
+  ChangeEvidenceEntry,
 } from '@/types';
 import { SYSTEM_CONFIG, ANNOTATION_TYPE_LABELS } from '@/types';
 import {
@@ -59,6 +62,7 @@ function createInitialState(): AppState {
     timelineSelectedVersionId: null,
     timelineCompareFromId: null,
     timelineCompareToId: null,
+    changeEvidences: {},
   };
 }
 
@@ -733,6 +737,8 @@ function createAppStore() {
       scribe?: string;
       provenance?: string;
       notes?: string;
+      confidence?: ConfidenceLevel;
+      evidences?: Evidence[];
     }): string | null {
       let newId: string | null = null;
       update((state) => {
@@ -751,6 +757,8 @@ function createAppStore() {
           scribe: data.scribe,
           provenance: data.provenance,
           notes: data.notes,
+          confidence: data.confidence,
+          evidences: data.evidences,
           createdAt: now(),
           updatedAt: now(),
         };
@@ -803,6 +811,12 @@ function createAppStore() {
       update((state) => {
         const version = state.mapVersions.find((v) => v.id === id);
         if (!version) return state;
+        const newChangeEvidences: Record<string, ChangeEvidenceEntry> = {};
+        for (const [k, v] of Object.entries(state.changeEvidences)) {
+          if (!k.includes(`:${id}:`) && !k.startsWith(`${id}:`) && !k.startsWith(`none:${id}:`)) {
+            newChangeEvidences[k] = v;
+          }
+        }
         return {
           ...state,
           mapVersions: state.mapVersions.filter((v) => v.id !== id),
@@ -814,7 +828,28 @@ function createAppStore() {
           timelineSelectedVersionId: state.timelineSelectedVersionId === id ? null : state.timelineSelectedVersionId,
           timelineCompareFromId: state.timelineCompareFromId === id ? null : state.timelineCompareFromId,
           timelineCompareToId: state.timelineCompareToId === id ? null : state.timelineCompareToId,
+          changeEvidences: newChangeEvidences,
         };
+      });
+    },
+
+    updateChangeEvidence(key: string, entry: ChangeEvidenceEntry) {
+      update((state) => ({
+        ...state,
+        changeEvidences: {
+          ...state.changeEvidences,
+          [key]: {
+            ...state.changeEvidences[key],
+            ...entry,
+          },
+        },
+      }));
+    },
+
+    deleteChangeEvidence(key: string) {
+      update((state) => {
+        const { [key]: _, ...rest } = state.changeEvidences;
+        return { ...state, changeEvidences: rest };
       });
     },
 
@@ -839,6 +874,7 @@ function createAppStore() {
           schemes: schemesWithViewport,
           timelines: state.timelines,
           mapVersions: state.mapVersions,
+          changeEvidences: state.changeEvidences,
         };
         localStorage.setItem(SYSTEM_CONFIG.STORAGE_KEY, JSON.stringify(payload));
       } catch (e) {
@@ -854,11 +890,12 @@ function createAppStore() {
           let schemes: AssemblyScheme[] = [];
           let timelines: Timeline[] = [];
           let mapVersions: MapVersion[] = [];
+          let changeEvidences: Record<string, ChangeEvidenceEntry> = {};
 
           if (Array.isArray(parsed)) {
             schemes = parsed.filter(validateSchemeData);
           } else if (typeof parsed === 'object' && parsed !== null) {
-            const obj = parsed as { schemes?: unknown; timelines?: unknown; mapVersions?: unknown };
+            const obj = parsed as { schemes?: unknown; timelines?: unknown; mapVersions?: unknown; changeEvidences?: unknown };
             if (Array.isArray(obj.schemes)) {
               schemes = obj.schemes.filter(validateSchemeData);
             }
@@ -867,6 +904,9 @@ function createAppStore() {
             }
             if (Array.isArray(obj.mapVersions)) {
               mapVersions = obj.mapVersions as MapVersion[];
+            }
+            if (typeof obj.changeEvidences === 'object' && obj.changeEvidences !== null) {
+              changeEvidences = obj.changeEvidences as Record<string, ChangeEvidenceEntry>;
             }
           }
 
@@ -881,6 +921,7 @@ function createAppStore() {
             schemes,
             timelines,
             mapVersions,
+            changeEvidences,
             currentSchemeId: firstScheme.id,
             currentTimelineId: timelines.length > 0 ? timelines[0].id : null,
             viewportScale: viewport.scale,
@@ -1048,11 +1089,26 @@ function arePointsEqual(a: Point[], b: Point[]): boolean {
   return true;
 }
 
+export function getChangeKey(change: { annotationId: string; toVersionId: string; fromVersionId?: string }): string {
+  return `${change.fromVersionId || 'none'}:${change.toVersionId}:${change.annotationId}`;
+}
+
+function injectEvidence(
+  change: AnnotationChange,
+  changeEvidences: Record<string, ChangeEvidenceEntry>
+): AnnotationChange {
+  const key = getChangeKey(change);
+  const entry = changeEvidences[key];
+  if (!entry) return change;
+  return { ...change, confidence: entry.confidence, evidences: entry.evidences };
+}
+
 function computeAnnotationChanges(
   fromScheme: AssemblyScheme | null,
   toScheme: AssemblyScheme | null,
   fromVersionId: string | undefined,
-  toVersionId: string
+  toVersionId: string,
+  changeEvidences: Record<string, ChangeEvidenceEntry> = {}
 ): AnnotationChange[] {
   const changes: AnnotationChange[] = [];
   if (!fromScheme || !toScheme) return changes;
@@ -1063,7 +1119,7 @@ function computeAnnotationChanges(
   for (const ann of toScheme.annotations) {
     const fromAnn = fromAnns.get(ann.id);
     if (!fromAnn) {
-      changes.push({
+      changes.push(injectEvidence({
         type: 'added',
         annotationId: ann.id,
         annotationLabel: ann.label,
@@ -1072,7 +1128,7 @@ function computeAnnotationChanges(
         toLabel: ann.label,
         toDescription: ann.description,
         toColor: ann.color,
-      });
+      }, changeEvidences));
       continue;
     }
 
@@ -1119,7 +1175,7 @@ function computeAnnotationChanges(
     }
 
     if (modified) {
-      changes.push({
+      changes.push(injectEvidence({
         type: 'modified',
         annotationId: ann.id,
         annotationLabel: ann.label,
@@ -1134,21 +1190,21 @@ function computeAnnotationChanges(
         toColor: ann.color,
         positionChanged,
         pointsChanged,
-      });
+      }, changeEvidences));
     } else {
-      changes.push({
+      changes.push(injectEvidence({
         type: 'unchanged',
         annotationId: ann.id,
         annotationLabel: ann.label,
         annotationType: ann.type,
         toVersionId,
-      });
+      }, changeEvidences));
     }
   }
 
   for (const ann of fromScheme.annotations) {
     if (!toAnns.has(ann.id)) {
-      changes.push({
+      changes.push(injectEvidence({
         type: 'removed',
         annotationId: ann.id,
         annotationLabel: ann.label,
@@ -1158,7 +1214,7 @@ function computeAnnotationChanges(
         fromLabel: ann.label,
         fromDescription: ann.description,
         fromColor: ann.color,
-      });
+      }, changeEvidences));
     }
   }
 
@@ -1173,6 +1229,24 @@ export const evolutionStatistics = derived(
     const sorted = [...$versions].sort((a, b) => a.yearNumeric - b.yearNumeric);
     const start = sorted[0].yearNumeric;
     const end = sorted[sorted.length - 1].yearNumeric;
+
+    const versionsByDynasty: Record<string, number> = {};
+    const confidenceDistribution: Record<ConfidenceLevel, number> = {
+      high: 0, medium: 0, low: 0, pending: 0,
+    };
+    let versionsWithoutEvidence = 0;
+
+    for (const v of sorted) {
+      versionsByDynasty[v.dynasty] = (versionsByDynasty[v.dynasty] || 0) + 1;
+      if (v.confidence) {
+        confidenceDistribution[v.confidence]++;
+      } else {
+        confidenceDistribution.pending++;
+      }
+      if (!v.evidences || v.evidences.length === 0) {
+        versionsWithoutEvidence++;
+      }
+    }
 
     if (sorted.length < 2) {
       return {
@@ -1190,6 +1264,11 @@ export const evolutionStatistics = derived(
           note: { added: 0, removed: 0, modified: 0, unchanged: 0 },
         },
         annotationChanges: [],
+        versionsByDynasty,
+        confidenceDistribution,
+        versionsWithoutEvidence,
+        changesWithoutEvidence: 0,
+        changesConfidenceDistribution: { high: 0, medium: 0, low: 0, pending: 0 },
       };
     }
 
@@ -1199,7 +1278,7 @@ export const evolutionStatistics = derived(
       const to = sorted[i];
       const fromScheme = $app.schemes.find((s) => s.id === from.schemeId) || null;
       const toScheme = $app.schemes.find((s) => s.id === to.schemeId) || null;
-      const pairChanges = computeAnnotationChanges(fromScheme, toScheme, from.id, to.id);
+      const pairChanges = computeAnnotationChanges(fromScheme, toScheme, from.id, to.id, $app.changeEvidences);
       allChanges.push(...pairChanges);
     }
 
@@ -1211,6 +1290,11 @@ export const evolutionStatistics = derived(
       note: { added: 0, removed: 0, modified: 0, unchanged: 0 },
     };
 
+    const changesConfidenceDistribution: Record<ConfidenceLevel, number> = {
+      high: 0, medium: 0, low: 0, pending: 0,
+    };
+    let changesWithoutEvidence = 0;
+
     for (const c of allChanges) {
       switch (c.type) {
         case 'added': addedCount++; break;
@@ -1220,6 +1304,14 @@ export const evolutionStatistics = derived(
       }
       if (byType[c.annotationType]) {
         byType[c.annotationType][c.type]++;
+      }
+      if (c.confidence) {
+        changesConfidenceDistribution[c.confidence]++;
+      } else {
+        changesConfidenceDistribution.pending++;
+      }
+      if (!c.evidences || c.evidences.length === 0) {
+        changesWithoutEvidence++;
       }
     }
 
@@ -1233,19 +1325,24 @@ export const evolutionStatistics = derived(
       unchangedCount,
       byType,
       annotationChanges: allChanges,
+      versionsByDynasty,
+      confidenceDistribution,
+      versionsWithoutEvidence,
+      changesWithoutEvidence,
+      changesConfidenceDistribution,
     };
   }
 );
 
 export const pairEvolutionStats = derived(
-  [timelineCompareFromVersion, timelineCompareToVersion, appStore],
-  ([$from, $to, $app]): EvolutionStatistics | null => {
+  [timelineCompareFromVersion, timelineCompareToVersion, appStore, currentTimelineVersions],
+  ([$from, $to, $app, $versions]): EvolutionStatistics | null => {
     if (!$from || !$to) return null;
 
     const fromScheme = $app.schemes.find((s) => s.id === $from.schemeId) || null;
     const toScheme = $app.schemes.find((s) => s.id === $to.schemeId) || null;
 
-    const changes = computeAnnotationChanges(fromScheme, toScheme, $from.id, $to.id);
+    const changes = computeAnnotationChanges(fromScheme, toScheme, $from.id, $to.id, $app.changeEvidences);
 
     let addedCount = 0, removedCount = 0, modifiedCount = 0, unchangedCount = 0;
     const byType = {
@@ -1254,6 +1351,11 @@ export const pairEvolutionStats = derived(
       boundary: { added: 0, removed: 0, modified: 0, unchanged: 0 },
       note: { added: 0, removed: 0, modified: 0, unchanged: 0 },
     };
+
+    const changesConfidenceDistribution: Record<ConfidenceLevel, number> = {
+      high: 0, medium: 0, low: 0, pending: 0,
+    };
+    let changesWithoutEvidence = 0;
 
     for (const c of changes) {
       switch (c.type) {
@@ -1264,6 +1366,32 @@ export const pairEvolutionStats = derived(
       }
       if (byType[c.annotationType]) {
         byType[c.annotationType][c.type]++;
+      }
+      if (c.confidence) {
+        changesConfidenceDistribution[c.confidence]++;
+      } else {
+        changesConfidenceDistribution.pending++;
+      }
+      if (!c.evidences || c.evidences.length === 0) {
+        changesWithoutEvidence++;
+      }
+    }
+
+    const sortedVersions = [...$versions].sort((a, b) => a.yearNumeric - b.yearNumeric);
+    const versionsByDynasty: Record<string, number> = {};
+    const confidenceDistribution: Record<ConfidenceLevel, number> = {
+      high: 0, medium: 0, low: 0, pending: 0,
+    };
+    let versionsWithoutEvidence = 0;
+    for (const v of sortedVersions) {
+      versionsByDynasty[v.dynasty] = (versionsByDynasty[v.dynasty] || 0) + 1;
+      if (v.confidence) {
+        confidenceDistribution[v.confidence]++;
+      } else {
+        confidenceDistribution.pending++;
+      }
+      if (!v.evidences || v.evidences.length === 0) {
+        versionsWithoutEvidence++;
       }
     }
 
@@ -1277,6 +1405,11 @@ export const pairEvolutionStats = derived(
       unchangedCount,
       byType,
       annotationChanges: changes,
+      versionsByDynasty,
+      confidenceDistribution,
+      versionsWithoutEvidence,
+      changesWithoutEvidence,
+      changesConfidenceDistribution,
     };
   }
 );
